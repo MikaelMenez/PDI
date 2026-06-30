@@ -1,0 +1,16 @@
+[package]
+name = "pdi"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = { version = "0.7", features = ["multipart"] }
+tokio = { version = "1.0", features = ["full"] }
+tower-http = { version = "0.5", features = ["fs", "cors"] }
+
+# Processamento de Imagens
+image = "0.25"
+
+# Utilidades
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
