@@ -1,0 +1,175 @@
+import { Button, VerticalBox, HorizontalBox, ScrollView } from "std-widgets.slint";
+
+export component AppWindow inherits Window {
+    title: "Processador de Imagens";
+    min-width: 900px;
+    min-height: 600px;
+    background: #ffffff;
+
+    // --- Comunicação com o Rust ---
+    callback abrir_arquivo();
+    callback selecionar_processo(int, string);
+    callback executar_processo(); // <-- Novo callback para o botão executar
+
+    in property <[string]> lista_processos: ["Filtro Gaussiano", "Detector Canny", "Binarização"];
+    in property <string> processo_atual: "Nenhum";
+
+    in property <image> img_entrada;
+    in property <image> img_saida;
+
+    VerticalBox {
+        spacing: 12px;
+        padding: 12px;
+
+        // [Bloco Laranja] - Opções de arquivo
+        HorizontalBox {
+            alignment: start;
+            Button {
+                text: "📁 Abrir Imagem (.png)";
+                primary: true;
+                clicked => { root.abrir_arquivo(); }
+            }
+        }
+
+        // Área Central
+        HorizontalBox {
+            spacing: 15px;
+
+            // [Barra Verde] - Seleção de processos (Coluna Lateral Inteira)
+            Rectangle {
+                width: 220px;
+                background: #a3cbd6;
+                border-radius: 6px;
+
+                VerticalBox {
+                    padding: 12px;
+                    spacing: 10px;
+                    // Sem 'alignment: start' aqui para forçar o ScrollView a esticar até o final
+
+                    Text {
+                        text: "Seleção de Processos";
+                        font-size: 16px;
+                        font-weight: 700;
+                        color: #1e3d4a;
+                        horizontal-alignment: center;
+                    }
+
+                    // Ocupa todo o espaço restante da coluna lateral
+                    ScrollView {
+                        VerticalBox {
+                            alignment: start; // Mantém os botões alinhados no topo do scroll
+                            spacing: 6px;
+                            padding: 2px;
+
+                            for proc[index] in root.lista_processos : Button {
+                                text: proc;
+                                clicked => {
+                                    root.selecionar_processo(index, proc);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Lado Direito: Imagens, Parâmetros e Acessórios
+            VerticalBox {
+                spacing: 15px;
+
+                // Linha das Imagens
+                HorizontalBox {
+                    spacing: 15px;
+
+                    // [Bloco Azul] - Imagem de entrada
+                    Rectangle {
+                        background: #9ebbfa;
+                        border-radius: 6px;
+                        min-height: 280px;
+
+                        VerticalBox {
+                            alignment: center;
+                            if (root.img_entrada.width > 0) : Image {
+                                source: root.img_entrada;
+                                image-fit: contain;
+                            }
+                            if (root.img_entrada.width == 0) : Text {
+                                text: "Imagem de Entrada";
+                                font-size: 16px;
+                                color: #1c2d54;
+                            }
+                        }
+                    }
+
+                    // [Bloco Vermelho] - Imagem de saída
+                    Rectangle {
+                        background: #faa2a2;
+                        border-radius: 6px;
+                        min-height: 280px;
+
+                        VerticalBox {
+                            alignment: center;
+                            if (root.img_saida.width > 0) : Image {
+                                source: root.img_saida;
+                                image-fit: contain;
+                            }
+                            if (root.img_saida.width == 0) : Text {
+                                text: "Imagem de Saída";
+                                font-size: 16px;
+                                color: #541c1c;
+                            }
+                        }
+                    }
+                }
+
+                // [Bloco Amarelo] - Parâmetros e Botão Executar
+                Rectangle {
+                    background: #fce8a6;
+                    border-radius: 6px;
+                    height: 90px;
+
+                    HorizontalBox {
+                        padding: 15px;
+                        spacing: 20px;
+
+                        // Texto alinhado à esquerda
+                        Text {
+                            text: "Parâmetros do processo: " + root.processo_atual;
+                            color: #4a3b12;
+                            font-weight: 700;
+                            vertical-alignment: center;
+                            horizontal-alignment: start;
+                        }
+
+                        // Botão empurrado e alinhado à direita
+                        HorizontalBox {
+                            alignment: end;
+                            Button {
+                                text: "⚙️ Executar Processo";
+                                primary: true;
+                                // Desabilita o botão se nenhum processo foi selecionado ainda
+                                enabled: root.processo_atual != "Nenhum";
+                                clicked => { root.executar_processo(); }
+                            }
+                        }
+                    }
+                }
+
+                // [Bloco Roxo] - Dados/Imagens acessórias
+                Rectangle {
+                    background: #ebd8eb;
+                    border-radius: 6px;
+                    height: 70px;
+
+                    VerticalBox {
+                        padding: 10px;
+                        alignment: center;
+                        Text {
+                            text: "Dados / Imagens acessórias (Ex: Histograma, Logs)";
+                            color: #4a124a;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
