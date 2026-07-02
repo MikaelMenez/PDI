@@ -10,7 +10,13 @@ fn main() {
         .expect("unable to open image")
         .decode()
         .expect("unable to decode");
-    processos::salva_decomposicao(
+    processos::salva_decomposicao_hsv(
+        processos::decomposicao_hsv(baboon.clone()),
+        "hsv".to_owned(),
+        "baboon".to_owned(),
+    )
+    .unwrap();
+    processos::salva_decomposicao_rgb(
         processos::decomposicao_rgb(baboon),
         "rgb".to_owned(),
         "baboon".to_owned(),

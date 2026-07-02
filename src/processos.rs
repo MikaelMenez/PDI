@@ -40,19 +40,31 @@ pub fn decomposicao_rgb(img: image::DynamicImage) -> Vec<ImageBuffer<Rgb<u8>, Ve
     let mut r: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
     let mut g: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
     let mut b: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
+    let mut pseudor: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
+    let mut pseudog: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
+    let mut pseudob: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
+
     for pixel in img.pixels() {
         let tempr = r.get_pixel_mut(pixel.0, pixel.1);
         *tempr = Rgb([pixel.2[0], pixel.2[0], pixel.2[0]]);
+        let temppseudor = pseudor.get_pixel_mut(pixel.0, pixel.1);
+        *temppseudor = Rgb([pixel.2[0], 0, 0]);
         let tempg = g.get_pixel_mut(pixel.0, pixel.1);
         *tempg = Rgb([pixel.2[1], pixel.2[1], pixel.2[1]]);
+        let temppseudog = pseudog.get_pixel_mut(pixel.0, pixel.1);
+        *temppseudog = Rgb([0, pixel.2[1], 0]);
         let tempb = b.get_pixel_mut(pixel.0, pixel.1);
         *tempb = Rgb([pixel.2[2], pixel.2[2], pixel.2[2]]);
+        let temppseudob = pseudob.get_pixel_mut(pixel.0, pixel.1);
+        *temppseudob = Rgb([0, 0, pixel.2[2]]);
     }
 
     vec.push(r);
     vec.push(g);
     vec.push(b);
-
+    vec.push(pseudor);
+    vec.push(pseudog);
+    vec.push(pseudob);
     vec
 }
 pub fn decomposicao_hsv(img: image::DynamicImage) -> Vec<ImageBuffer<Rgb<u8>, Vec<u8>>> {
@@ -76,7 +88,32 @@ pub fn decomposicao_hsv(img: image::DynamicImage) -> Vec<ImageBuffer<Rgb<u8>, Ve
 
     vec
 }
-pub fn salva_decomposicao(
+pub fn salva_decomposicao_hsv(
+    imgs: Vec<ImageBuffer<Rgb<u8>, Vec<u8>>>,
+    dir: String,
+    name: String,
+) -> Result<(), Box<dyn Error>> {
+    imgs[0].save(format!(
+        "{}{}{}",
+        dir.trim_end_matches("/").to_owned() + "/",
+        name,
+        "H.png"
+    ))?;
+    imgs[1].save(format!(
+        "{}{}{}",
+        dir.trim_end_matches("/").to_owned() + "/",
+        name,
+        "S.png"
+    ))?;
+    imgs[2].save(format!(
+        "{}{}{}",
+        dir.trim_end_matches("/").to_owned() + "/",
+        name,
+        "V.png"
+    ))?;
+    Ok(())
+}
+pub fn salva_decomposicao_rgb(
     imgs: Vec<ImageBuffer<Rgb<u8>, Vec<u8>>>,
     dir: String,
     name: String,
@@ -98,6 +135,24 @@ pub fn salva_decomposicao(
         dir.trim_end_matches("/").to_owned() + "/",
         name,
         "B.png"
+    ))?;
+    imgs[3].save(format!(
+        "{}{}{}",
+        dir.trim_end_matches("/").to_owned() + "/",
+        name,
+        "pseudoR.png"
+    ))?;
+    imgs[4].save(format!(
+        "{}{}{}",
+        dir.trim_end_matches("/").to_owned() + "/",
+        name,
+        "pseudoG.png"
+    ))?;
+    imgs[5].save(format!(
+        "{}{}{}",
+        dir.trim_end_matches("/").to_owned() + "/",
+        name,
+        "pseudoB.png"
     ))?;
     Ok(())
 }
