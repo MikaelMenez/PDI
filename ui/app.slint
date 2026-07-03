@@ -1,174 +1,311 @@
-import { Button, VerticalBox, HorizontalBox, ScrollView } from "std-widgets.slint";
+import { Button, ScrollView } from "std-widgets.slint";
+
+export struct ImagemSaida {
+    img: image,
+    legenda: string,
+}
 
 export component AppWindow inherits Window {
-    title: "Processador de Imagens";
-    min-width: 900px;
-    min-height: 600px;
-    background: #ffffff;
+    title: "Processador de Imagens Digitais (PDI) - UFPB";
+    min-width: 1024px;
+    min-height: 768px;
+    background: #1e1e2e;
 
-    // --- Comunicação com o Rust ---
+    // ------------------------------------------------------------------------
+    // PROPRIEDADES DE ESTADO E NOTIFICAÇÃO
+    // ------------------------------------------------------------------------
+    in-out property <image> img_entrada;
+    in-out property <[ImagemSaida]> lista_saidas: [];
+    in-out property <int> indice_selecionado: 0;
+    in-out property <string> processo_atual: "Nenhum";
+
+    in-out property <string> status_texto: "Sistema pronto. Aguardando ação...";
+    in-out property <brush> status_cor: #a6adc8;
+
+    private property <[string]> filtros: [
+        "Decomposição RGB",
+        "Decomposição HSV",
+        "Limiarização",
+        "Transf. Logarítmica",
+        "Transf. de Potência (Gamma)",
+        "Equalização de Histograma",
+        "Fatiamento por Intensidade",
+        "Filtro de Média Gaussiana",
+        "Filtro de Mediana",
+        "Filtro de Mínimo",
+        "Filtro de Máximo",
+        "Máscara de Aguçamento",
+        "Realce por Laplaciano",
+        "Gradiente de Sobel",
+        "Passa-Baixa Gaussiano",
+        "Passa-Alta Gaussiano",
+        "Passa-Baixa Butterworth",
+        "Passa-Alta Butterworth",
+        "Filtro Adaptativo de Mediana",
+        "Ruído Aditivo Gaussiano",
+        "Ruído Sal",
+        "Ruído Pimenta",
+        "Ruído Sal e Pimenta"
+    ];
+
     callback abrir_arquivo();
     callback selecionar_processo(int, string);
-    callback executar_processo(); // <-- Novo callback para o botão executar
+    callback executar_processo();
+    callback salvar_atual();
+    callback salvar_todas();
 
-    in property <[string]> lista_processos: ["Filtro Gaussiano", "Detector Canny", "Binarização"];
-    in property <string> processo_atual: "Nenhum";
+    VerticalLayout {
+        HorizontalLayout {
+            padding: 16px;
+            spacing: 16px;
 
-    in property <image> img_entrada;
-    in property <image> img_saida;
-
-    VerticalBox {
-        spacing: 12px;
-        padding: 12px;
-
-        // [Bloco Laranja] - Opções de arquivo
-        HorizontalBox {
-            alignment: start;
-            Button {
-                text: "📁 Abrir Imagem (.png)";
-                primary: true;
-                clicked => { root.abrir_arquivo(); }
-            }
-        }
-
-        // Área Central
-        HorizontalBox {
-            spacing: 15px;
-
-            // [Barra Verde] - Seleção de processos (Coluna Lateral Inteira)
+            // ====================================================================
+            // PAINEL LATERAL DE CONTROLE (Esquerda)
+            // ====================================================================
             Rectangle {
-                width: 220px;
-                background: #a3cbd6;
-                border-radius: 6px;
+                width: 320px;
+                background: #252538;
+                border-radius: 8px;
 
-                VerticalBox {
-                    padding: 12px;
-                    spacing: 10px;
-                    // Sem 'alignment: start' aqui para forçar o ScrollView a esticar até o final
+                VerticalLayout {
+                    padding: 14px;
+                    spacing: 12px;
 
-                    Text {
-                        text: "Seleção de Processos";
-                        font-size: 16px;
-                        font-weight: 700;
-                        color: #1e3d4a;
-                        horizontal-alignment: center;
+                    Button {
+                        text: "📂 Abrir Imagem";
+                        clicked => {
+                            root.abrir_arquivo();
+                        }
                     }
 
-                    // Ocupa todo o espaço restante da coluna lateral
-                    ScrollView {
-                        VerticalBox {
-                            alignment: start; // Mantém os botões alinhados no topo do scroll
-                            spacing: 6px;
-                            padding: 2px;
+                    Rectangle {
+                        height: 45px;
+                        background: #11111b;
+                        border-radius: 4px;
+                        Text {
+                            text: "Filtro: " + root.processo_atual;
+                            color: #cdd6f4;
+                            font-size: 14px;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+                    }
 
-                            for proc[index] in root.lista_processos : Button {
-                                text: proc;
+                    Text {
+                        text: "Selecione o Algoritmo:";
+                        color: #a6adc8;
+                        font-size: 12px;
+                    }
+
+                    ScrollView {
+                        VerticalLayout {
+                            spacing: 4px;
+                            for filtro[i] in root.filtros: Rectangle {
+                                height: 35px;
+                                background: root.processo_atual == filtro ? #45475a : #1e1e2e;
+                                border-radius: 4px;
+
+                                TouchArea {
+                                    clicked => {
+                                        root.selecionar_processo(i, filtro);
+                                    }
+                                }
+
+                                Text {
+                                    text: filtro;
+                                    color: root.processo_atual == filtro ? #f5c2e7 : #cdd6f4;
+                                    x: 10px;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+
+                    Button {
+                        text: "⚡ Executar Processo";
+                        primary: true;
+                        enabled: root.processo_atual != "Nenhum";
+                        clicked => {
+                            root.executar_processo();
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        height: 40px;
+
+                        Button {
+                            text: "💾 Salvar Atual";
+                            enabled: root.lista_saidas.length > 0;
+                            clicked => {
+                                root.salvar_atual();
+                            }
+                        }
+
+                        Button {
+                            text: "📦 Salvar Todas";
+                            enabled: root.lista_saidas.length > 0;
+                            clicked => {
+                                root.salvar_todas();
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ====================================================================
+            // ÁREA DE VISUALIZAÇÃO DAS MATRIZES (Direita) - AGORA ADAPTÁVEL
+            // ====================================================================
+            VerticalLayout {
+                spacing: 16px;
+                // Faz com que toda a área da direita estique para preencher o tamanho da janela
+                vertical-stretch: 1;
+
+                HorizontalLayout {
+                    spacing: 16px;
+                    vertical-stretch: 1;
+
+                    // 🟦 CONTAINER DE ENTRADA (AZUL)
+                    VerticalLayout {
+                        spacing: 6px;
+                        vertical-stretch: 1;
+                        Text {
+                            text: "IMAGEM DE ENTRADA (ORIGINAL)";
+                            color: #89b4fa;
+                            font-weight: 700;
+                        }
+
+                        Rectangle {
+                            min-height: 300px;   // Evita colapsar se a janela for muito reduzida
+                            vertical-stretch: 1; // 👈 Estica dinamicamente baseado no monitor/resolução
+                            background: #11111b;
+                            border-width: 2px;
+                            border-color: #89b4fa;
+                            border-radius: 8px;
+                            clip: true;
+
+                            Image {
+                                source: root.img_entrada;
+                                width: 100%;
+                                height: 100%;
+                                image-fit: contain; // Adapta a proporção interna da imagem sem esticar os pixels
+                            }
+                        }
+
+                        Text {
+                            text: " ";
+                            font-size: 14px;
+                        }
+                    }
+
+                    // 🟥 CONTAINER DE SAÍDA REATIVO (VERMELHO)
+                    VerticalLayout {
+                        spacing: 6px;
+                        vertical-stretch: 1;
+                        Text {
+                            text: "PRODUTO DO PROCESSAMENTO (SAÍDA)";
+                            color: #f38ba8;
+                            font-weight: 700;
+                        }
+
+                        Rectangle {
+                            min-height: 300px;   // Seguro contra colapsos estruturais
+                            vertical-stretch: 1; // 👈 Acompanha simetricamente o painel azul
+                            background: #11111b;
+                            border-width: 2px;
+                            border-color: #f38ba8;
+                            border-radius: 8px;
+                            clip: true;
+
+                            if root.lista_saidas.length > 0: Image {
+                                source: root.lista_saidas[root.indice_selecionado].img;
+                                width: 100%;
+                                height: 100%;
+                                image-fit: contain;
+                            }
+
+                            if root.lista_saidas.length == 0: Text {
+                                text: "Aguardando execução de algum algoritmo...";
+                                color: #585b70;
+                                vertical-alignment: center;
+                                horizontal-alignment: center;
+                            }
+                        }
+
+                        if root.lista_saidas.length > 0: Text {
+                            text: root.lista_saidas[root.indice_selecionado].legenda;
+                            color: #a6adc8;
+                            font-size: 14px;
+                            font-weight: 700;
+                            horizontal-alignment: center;
+                        }
+
+                        if root.lista_saidas.length == 0: Text {
+                            text: "Nenhum processamento ativo";
+                            color: #585b70;
+                            font-size: 14px;
+                            horizontal-alignment: center;
+                        }
+                    }
+                }
+
+                // CONTROLES DE NAVEGAÇÃO MULTI-SAÍDA
+                if root.lista_saidas.length > 1: HorizontalLayout {
+                    alignment: center;
+
+                    Rectangle {
+                        height: 50px;
+                        background: #252538;
+                        border-radius: 8px;
+                        width: 400px;
+
+                        HorizontalLayout {
+                            padding: 8px;
+                            spacing: 20px;
+                            alignment: center;
+
+                            Button {
+                                text: "◀ Anterior";
+                                enabled: root.indice_selecionado > 0;
                                 clicked => {
-                                    root.selecionar_processo(index, proc);
+                                    root.indice_selecionado -= 1;
+                                }
+                            }
+
+                            Text {
+                                text: (root.indice_selecionado + 1) + " / " + root.lista_saidas.length;
+                                color: #cdd6f4;
+                                font-size: 14px;
+                                vertical-alignment: center;
+                            }
+
+                            Button {
+                                text: "Próxima ▶";
+                                enabled: root.indice_selecionado < root.lista_saidas.length - 1;
+                                clicked => {
+                                    root.indice_selecionado += 1;
                                 }
                             }
                         }
                     }
                 }
             }
+        }
 
-            // Lado Direito: Imagens, Parâmetros e Acessórios
-            VerticalBox {
-                spacing: 15px;
+        // ====================================================================
+        // BARRA DE STATUS DINÂMICA
+        // ====================================================================
+        Rectangle {
+            height: 32px;
+            background: #11111b;
 
-                // Linha das Imagens
-                HorizontalBox {
-                    spacing: 15px;
-
-                    // [Bloco Azul] - Imagem de entrada
-                    Rectangle {
-                        background: #9ebbfa;
-                        border-radius: 6px;
-                        min-height: 280px;
-
-                        VerticalBox {
-                            alignment: center;
-                            if (root.img_entrada.width > 0) : Image {
-                                source: root.img_entrada;
-                                image-fit: contain;
-                            }
-                            if (root.img_entrada.width == 0) : Text {
-                                text: "Imagem de Entrada";
-                                font-size: 16px;
-                                color: #1c2d54;
-                            }
-                        }
-                    }
-
-                    // [Bloco Vermelho] - Imagem de saída
-                    Rectangle {
-                        background: #faa2a2;
-                        border-radius: 6px;
-                        min-height: 280px;
-
-                        VerticalBox {
-                            alignment: center;
-                            if (root.img_saida.width > 0) : Image {
-                                source: root.img_saida;
-                                image-fit: contain;
-                            }
-                            if (root.img_saida.width == 0) : Text {
-                                text: "Imagem de Saída";
-                                font-size: 16px;
-                                color: #541c1c;
-                            }
-                        }
-                    }
-                }
-
-                // [Bloco Amarelo] - Parâmetros e Botão Executar
-                Rectangle {
-                    background: #fce8a6;
-                    border-radius: 6px;
-                    height: 90px;
-
-                    HorizontalBox {
-                        padding: 15px;
-                        spacing: 20px;
-
-                        // Texto alinhado à esquerda
-                        Text {
-                            text: "Parâmetros do processo: " + root.processo_atual;
-                            color: #4a3b12;
-                            font-weight: 700;
-                            vertical-alignment: center;
-                            horizontal-alignment: start;
-                        }
-
-                        // Botão empurrado e alinhado à direita
-                        HorizontalBox {
-                            alignment: end;
-                            Button {
-                                text: "⚙️ Executar Processo";
-                                primary: true;
-                                // Desabilita o botão se nenhum processo foi selecionado ainda
-                                enabled: root.processo_atual != "Nenhum";
-                                clicked => { root.executar_processo(); }
-                            }
-                        }
-                    }
-                }
-
-                // [Bloco Roxo] - Dados/Imagens acessórias
-                Rectangle {
-                    background: #ebd8eb;
-                    border-radius: 6px;
-                    height: 70px;
-
-                    VerticalBox {
-                        padding: 10px;
-                        alignment: center;
-                        Text {
-                            text: "Dados / Imagens acessórias (Ex: Histograma, Logs)";
-                            color: #4a124a;
-                        }
-                    }
-                }
+            Text {
+                text: root.status_texto;
+                color: root.status_cor;
+                x: 16px;
+                vertical-alignment: center;
+                font-size: 13px;
+                font-weight: 600;
             }
         }
     }

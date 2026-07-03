@@ -35,7 +35,7 @@ impl Hsv {
     }
 }
 
-pub fn decomposicao_rgb(img: image::DynamicImage) -> Vec<ImageBuffer<Rgb<u8>, Vec<u8>>> {
+pub fn decomposicao_rgb(img: image::DynamicImage) -> Vec<(DynamicImage, String)> {
     let mut vec = vec![];
     let mut r: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
     let mut g: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
@@ -58,17 +58,16 @@ pub fn decomposicao_rgb(img: image::DynamicImage) -> Vec<ImageBuffer<Rgb<u8>, Ve
         let temppseudob = pseudob.get_pixel_mut(pixel.0, pixel.1);
         *temppseudob = Rgb([0, 0, pixel.2[2]]);
     }
-
-    vec.push(r);
-    vec.push(g);
-    vec.push(b);
-    vec.push(pseudor);
-    vec.push(pseudog);
-    vec.push(pseudob);
+    vec.push((r.into(), "Canal_R".to_string()));
+    vec.push((g.into(), "Canal_G".to_string()));
+    vec.push((b.into(), "Canal_B".to_string()));
+    vec.push((pseudor.into(), "Canal_R_pseudocoloracao".to_string()));
+    vec.push((pseudog.into(), "Canal_G_pseudocoloracao".to_string()));
+    vec.push((pseudob.into(), "Canal_B_pseudocoloracao".to_string()));
     vec
 }
-pub fn decomposicao_hsv(img: image::DynamicImage) -> Vec<ImageBuffer<Rgb<u8>, Vec<u8>>> {
-    let mut vec = vec![];
+pub fn decomposicao_hsv(img: image::DynamicImage) -> Vec<(DynamicImage, String)> {
+    let mut vec: Vec<(DynamicImage, String)> = vec![];
     let mut h: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
     let mut s: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
     let mut v: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
@@ -82,9 +81,9 @@ pub fn decomposicao_hsv(img: image::DynamicImage) -> Vec<ImageBuffer<Rgb<u8>, Ve
         *tempb = Rgb([hsv.v as u8, hsv.v as u8, hsv.v as u8]);
     }
 
-    vec.push(h);
-    vec.push(s);
-    vec.push(v);
+    vec.push((h.into(), "Canal_H".to_string()));
+    vec.push((s.into(), "Canal_S".to_string()));
+    vec.push((v.into(), "Canal_V".to_string()));
 
     vec
 }
