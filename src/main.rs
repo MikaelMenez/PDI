@@ -308,7 +308,7 @@ fn aplicar_algoritmo_pdi(
     match filtro {
         "Decomposição RGB" => processos::decomposicao_rgb(img),
         "Decomposição HSV" => processos::decomposicao_hsv(img),
-        "Limiarização" => vec![(img, "Resultado Binarizado (Limiar)".to_string())],
+        "Limiarização" => processos::limiarizacao(img, 15),
         "Transf. Logarítmica" => vec![(img, "Expansão de Tons Escuros (Log)".to_string())],
         "Transf. de Potência (Gamma)" => vec![(img, "Correção Gamma".to_string())],
         "Equalização de Histograma" => vec![(img, "Histograma Uniformizado".to_string())],
