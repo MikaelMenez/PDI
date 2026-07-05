@@ -87,6 +87,295 @@ pub fn decomposicao_hsv(img: image::DynamicImage) -> Vec<(DynamicImage, String)>
 
     vec
 }
+
+pub fn limiarizacao(img: image::DynamicImage, limiar: u8) -> Vec<(DynamicImage, String)> {
+    let mut vec: Vec<(DynamicImage, String)> = vec![];
+    let mut cinza_base: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
+    let mut binaria_base: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
+    let mut cinza_olho: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
+    let mut binaria_olho: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
+    for pixel in img.pixels() {
+        let intensidade_base = (pixel.2[0] as f32 + pixel.2[1] as f32 + pixel.2[2] as f32) / 3.0;
+        let valor_base = intensidade_base as u8;
+        let intensidade_olho = pixel.2[0] as f32 * 0.2126 + pixel.2[1] as f32 * 0.7152 + pixel.2[2] as f32 * 0.0722;
+        let valor_olho = intensidade_olho as u8;
+        let binario_base = if valor_base >= limiar {255} else {0};
+        let binario_olho = if valor_olho >= limiar {255} else {0};
+
+        let tempcin_b = cinza_base.get_pixel_mut(pixel.0, pixel.1);
+        *tempcin_b = Rgb([valor_base, valor_base, valor_base]);
+        let tempbin_b = binaria_base.get_pixel_mut(pixel.0, pixel.1);
+        *tempbin_b = Rgb([binario_base, binario_base, binario_base]);
+        let tempcin_o = binaria_base.get_pixel_mut(pixel.0, pixel.1);
+        *tempcin_o = Rgb([valor_olho, valor_olho, valor_olho]);
+        let tempbin_o = binaria_base.get_pixel_mut(pixel.0, pixel.1);
+        *tempbin_o = Rgb([binario_olho, binario_olho, binario_olho]);
+    }
+
+    vec.push((cinza_base.into(), "Imagem_Escala_De_Cinza_Simples".to_string()));
+    vec.push((binaria_base.into(), "Imagem_Limiarizada_Simples".to_string()));
+    vec.push((cinza_olho.into(), "Imagem_Escala_De_Cinza_Adaptada".to_string()));
+    vec.push((binaria_olho.into(), "Imagem_Limiarizada_Adaptada".to_string()));
+
+    vec
+}
+
+pub fn tranformacao_log(img: image::DynamicImage, ganho: f32) -> Vec<(DynamicImage, String)> {
+    let mut vec: Vec<(DynamicImage, String)> = vec![];
+    let mut cinza_base: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
+    let mut ln_base: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
+    let mut log10_base: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
+    let mut log2_base: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
+
+    let mut cinza_olho: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
+    let mut ln_olho: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
+    let mut log10_olho: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
+    let mut log2_olho: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
+    for pixel in img.pixels() {
+        let valor_intensidade_base = (pixel.2[0] as f32 + pixel.2[1] as f32 + pixel.2[2] as f32) / 3.0;
+        let intensidade_base = valor_intensidade_base as u8;
+        let intensidade_ln_base = ganho * (1 + intensidade_base).ln() as u8;
+        let intensidade_log10_base = ganho * (1 + intensidade_base).log10() as u8;
+        let intensidade_log2_base = ganho * (1 + intensidade_base).log(2.0) as u8;
+
+        let valor_intensidade_olho = pixel.2[0] as f32 * 0.2126 + pixel.2[1] as f32 * 0.7152 + pixel.2[2] as f32 * 0.0722;
+        let intensidade_olho = valor_intensidade_olho as u8;
+        let intensidade_ln_olho = ganho * (1 + intensidade_olho).ln() as u8;
+        let intensidade_log10_olho = ganho * (1 + intensidade_olho).log10() as u8;
+        let intensidade_log2_olho = ganho * (1 + intensidade_olho).log(2.0) as u8;
+
+        let temp_cinzabase = cinza_base.get_pixel_mut(pixel.0, pixel.1);
+        *temp_cinzabase = Rgb([intensidade_base, intensidade_base, intensidade_base]);
+        let temp_lnbase = ln_base.get_pixel_mut(pixel.0, pixel.1);
+        *temp_lnbase = Rgb([intensidade_ln_base, intensidade_ln_base, intensidade_ln_base]);
+        let temp_log10base = log10_base.get_pixel_mut(pixel.0, pixel.1);
+        *temp_log10base = Rgb([intensidade_log10_base, intensidade_log10_base, intensidade_log10_base]);
+        let temp_log2base = log2_base.get_pixel_mut(pixel.0, pixel.1);
+        *temp_log2base = Rgb([intensidade_log2_base, intensidade_log2_base, intensidade_log2_base]);
+
+        let temp_cinzaolho = cinza_olho.get_pixel_mut(pixel.0, pixel.1);
+        *temp_cinzaolho = Rgb([intensidade_olho, intensidade_olho, intensidade_olho]);
+        let temp_lnolho = ln_olho.get_pixel_mut(pixel.0, pixel.1);
+        *temp_lnolho = Rgb([intensidade_ln_olho, intensidade_ln_olho, intensidade_ln_olho]);
+        let temp_log10olho = log10_olho.get_pixel_mut(pixel.0, pixel.1);
+        *temp_log10olho = Rgb([intensidade_log10_olho, intensidade_log10_olho, intensidade_log10_olho]);
+        let temp_log2olho = log2_olho.get_pixel_mut(pixel.0, pixel.1);
+        *temp_log2olho = Rgb([intensidade_log2_olho, intensidade_log2_olho, intensidade_log2_olho]);
+    }
+
+    vec.push((cinza_base.into(), "Imagem_Escala_De_Cinza_Simples".to_string()));
+    vec.push((ln_base.into(), "Transformacao_Ln_Simples".to_string()));
+    vec.push((log10_base.into(), "Transformacao_Log10_Simples".to_string()));
+    vec.push((log2_base.into(), "Transformacao_Log2_Simples".to_string()));
+
+    vec.push((cinza_olho.into(), "Imagem_Escala_De_Cinza_Adaptada".to_string()));
+    vec.push((ln_olho.into(), "Transformacao_Ln_Adaptada".to_string()));
+    vec.push((log10_olho.into(), "Transformacao_Log10_Adaptada".to_string()));
+    vec.push((log2_olho.into(), "Transformacao_Log2_Adaptada".to_string()));
+
+    vec
+}
+
+pub fn transformacao_potencia(img: image::DynamicImage, gama: f32) -> Vec<(DynamicImage, String)> {
+    let mut vec: Vec<(DynamicImage, String)> = Vec::new();
+    let mut cinza_base: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
+    let mut cinza_gama_base: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
+    let mut potencia_base: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
+    let mut potencia_gama_base: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
+
+    let mut cinza_olho: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
+    let mut cinza_gama_olho: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
+    let mut potencia_olho: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
+    let mut potencia_gama_olho: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(img.width(), img.height());
+    for pixel in img.pixels() {
+        let valor_intensidade_base = (pixel.2[0] as f32 + pixel.2[1] as f32 + pixel.2[2] as f32) / 3.0;
+        let intensidade_base = valor_intensidade_base as u8;
+        let intensidade_gama_base = intensidade_base.powf(1.0/gama) as u8;
+        let intensidade_potencia_base = intensidade_base.powf(gama) as u8;
+        let intensidade_potencia_gama_base = intensidade_gama_base.powf(gama) as u8;
+
+        let valor_intensidade_olho = pixel.2[0] as f32 * 0.2126 + pixel.2[1] as f32 * 0.7152 + pixel.2[2] as f32 * 0.0722;
+        let intensidade_olho = valor_intensidade_olho as u8;
+        let intensidade_gama_olho = intensidade_olho.powf(1.0/gama) as u8;
+        let intensidade_potencia_olho = intensidade_olho.powf(gama) as u8;
+        let intensidade_potencia_gama_olho = intensidade_gama_olho.log(2.0) as u8;
+
+        let temp_cinzabase = cinza_base.get_pixel_mut(pixel.0, pixel.1);
+        *temp_cinzabase = Rgb([intensidade_base, intensidade_base, intensidade_base]);
+        let temp_cinzagamabase = cinza_gama_base.get_pixel_mut(pixel.0, pixel.1);
+        *temp_cinzagamabase = Rgb([intensidade_gama_base, intensidade_gama_base, intensidade_gama_base]);
+        let temp_potenciabase = potencia_base.get_pixel_mut(pixel.0, pixel.1);
+        *temp_potenciabase = Rgb([intensidade_potencia_base, intensidade_potencia_base, intensidade_potencia_base]);
+        let temp_potenciagamabase = potencia_gama_base.get_pixel_mut(pixel.0, pixel.1);
+        *temp_potenciagamabase = Rgb([intensidade_potencia_gama_base, intensidade_potencia_gama_base, intensidade_potencia_gama_base]);
+
+        let temp_cinzaolho = cinza_olho.get_pixel_mut(pixel.0, pixel.1);
+        *temp_cinzaolho = Rgb([intensidade_olho, intensidade_olho, intensidade_olho]);
+        let temp_cinzagamaolho = cinza_gama_olho.get_pixel_mut(pixel.0, pixel.1);
+        *temp_cinzagamaolho = Rgb([intensidade_gama_olho, intensidade_gama_olho, intensidade_gama_olho]);
+        let temp_potenciaolho = potencia_olho.get_pixel_mut(pixel.0, pixel.1);
+        *temp_potenciaolho = Rgb([intensidade_potencia_olho, intensidade_potencia_olho, intensidade_potencia_olho]);
+        let temp_potenciagamaolho = potencia_gama_olho.get_pixel_mut(pixel.0, pixel.1);
+        *temp_potenciagamaolho = Rgb([intensidade_potencia_gama_olho, intensidade_potencia_gama_olho, intensidade_potencia_gama_olho]);
+    }
+
+    vec.push((cinza_base.into(), "Imagem_Escala_De_Cinza_Simples".to_string()));
+    vec.push((cinza_gama_base.into(), "Imagem_Escala_De_Cinza_Correcao_Gama_Simples".to_string()));
+    vec.push((potencia_base.into(), "Transformacao_Potencia_Simples".to_string()));
+    vec.push((potencia_gama_base.into(), "Transformacao_Potencia_Correcao_Gama_Simples".to_string()));
+
+    vec.push((cinza_olho.into(), "Imagem_Escala_De_Cinza_Adaptada".to_string()));
+    vec.push((cinza_gama_olho.into(), "Imagem_Escala_De_Cinza_Correcao_Gama_Adaptada".to_string()));
+    vec.push((potencia_olho.into(), "Transformacao_Potencia_Adaptada".to_string()));
+    vec.push((potencia_gama_olho.into(), "Transformacao_Potencia_Correcao_Gama_Adaptada".to_string()));
+
+    vec
+}
+
+pub fn salva_transformacao_potencia(
+    imgs: Vec<ImageBuffer<Rgb<u8>, Vec<u8>>>,
+    dir: String,
+    name: String,
+) -> Result<(), Box<dyn Error>> {
+    imgs[0].save(format!(
+        "{}{}{}",
+        dir.trim_end_matches("/").to_owned() + "/",
+        name,
+        "EscalaDeCinzaSimples.png"
+    ))?;
+    imgs[1].save(format!(
+        "{}{}{}",
+        dir.trim_end_matches("/").to_owned() + "/",
+        name,
+        "EscalaDeCinzaCorrecaoGamaSimples.png"
+    ))?;
+    imgs[2].save(format!(
+        "{}{}{}",
+        dir.trim_end_matches("/").to_owned() + "/",
+        name,
+        "TransformacaoPotenciaSimples.png"
+    ))?;
+    imgs[3].save(format!(
+        "{}{}{}",
+        dir.trim_end_matches("/").to_owned() + "/",
+        name,
+        "TransformacaoPotenciaCorrecaoGamaSimples.png"
+    ))?;
+    imgs[4].save(format!(
+        "{}{}{}",
+        dir.trim_end_matches("/").to_owned() + "/",
+        name,
+        "EscalaDeCinzaAdaptada.png"
+    ))?;
+    imgs[5].save(format!(
+        "{}{}{}",
+        dir.trim_end_matches("/").to_owned() + "/",
+        name,
+        "EscalaDeCinzaCorrecaoGamaAdaptada.png"
+    ))?;
+    imgs[6].save(format!(
+        "{}{}{}",
+        dir.trim_end_matches("/").to_owned() + "/",
+        name,
+        "TransformacaoPotenciaAdaptada.png"
+    ))?;
+    imgs[7].save(format!(
+        "{}{}{}",
+        dir.trim_end_matches("/").to_owned() + "/",
+        name,
+        "TransformacaoPotenciaCorrecaoGamaAdaptada.png"
+    ))?;
+    Ok(())
+}
+
+pub fn salva_transformacao_log(
+    imgs: Vec<ImageBuffer<Rgb<u8>, Vec<u8>>>,
+    dir: String,
+    name: String,
+) -> Result<(), Box<dyn Error>> {
+    imgs[0].save(format!(
+        "{}{}{}",
+        dir.trim_end_matches("/").to_owned() + "/",
+        name,
+        "EscalaDeCinzaSimples.png"
+    ))?;
+    imgs[1].save(format!(
+        "{}{}{}",
+        dir.trim_end_matches("/").to_owned() + "/",
+        name,
+        "TransformacaoLnSimples.png"
+    ))?;
+    imgs[2].save(format!(
+        "{}{}{}",
+        dir.trim_end_matches("/").to_owned() + "/",
+        name,
+        "TransformacaoLog10Simples.png"
+    ))?;
+    imgs[3].save(format!(
+        "{}{}{}",
+        dir.trim_end_matches("/").to_owned() + "/",
+        name,
+        "TransformacaoLog2Simples.png"
+    ))?;
+    imgs[4].save(format!(
+        "{}{}{}",
+        dir.trim_end_matches("/").to_owned() + "/",
+        name,
+        "EscalaDeCinzaAdaptada.png"
+    ))?;
+    imgs[5].save(format!(
+        "{}{}{}",
+        dir.trim_end_matches("/").to_owned() + "/",
+        name,
+        "TransformacaoLnAdaptada.png"
+    ))?;
+    imgs[6].save(format!(
+        "{}{}{}",
+        dir.trim_end_matches("/").to_owned() + "/",
+        name,
+        "TransformacaoLog10Adaptada.png"
+    ))?;
+    imgs[7].save(format!(
+        "{}{}{}",
+        dir.trim_end_matches("/").to_owned() + "/",
+        name,
+        "TransformacaoLog2Adaptada.png"
+    ))?;
+    Ok(())
+}
+
+pub fn salva_limiarizacao(
+    imgs: Vec<ImageBuffer<Rgb<u8>, Vec<u8>>>,
+    dir: String,
+    name: String,
+) -> Result<(), Box<dyn Error>> {
+    imgs[0].save(format!(
+        "{}{}{}",
+        dir.trim_end_matches("/").to_owned() + "/",
+        name,
+        "EscalaDeCinzaSimples.png"
+    ))?;
+    imgs[1].save(format!(
+        "{}{}{}",
+        dir.trim_end_matches("/").to_owned() + "/",
+        name,
+        "LimiarizacaoSimples.png"
+    ))?;
+    imgs[2].save(format!(
+        "{}{}{}",
+        dir.trim_end_matches("/").to_owned() + "/",
+        name,
+        "EscalaDeCinzaAdaptada.png"
+    ))?;
+    imgs[3].save(format!(
+        "{}{}{}",
+        dir.trim_end_matches("/").to_owned() + "/",
+        name,
+        "LimiarizacaoAdaptada.png"
+    ))?;
+    Ok(())
+}
+
 pub fn salva_decomposicao_hsv(
     imgs: Vec<ImageBuffer<Rgb<u8>, Vec<u8>>>,
     dir: String,
