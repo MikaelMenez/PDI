@@ -191,14 +191,14 @@ pub fn transformacao_potencia(img: image::DynamicImage, gama: f32) -> Vec<(Dynam
         let valor_intensidade_base = (pixel.2[0] as f32 + pixel.2[1] as f32 + pixel.2[2] as f32) / 3.0;
         let intensidade_base = valor_intensidade_base as u8;
         let intensidade_gama_base = intensidade_base.powf(1.0/gama) as u8;
-        let intensidade_potencia_base = intensidade_base.powf(gama) as u8;
-        let intensidade_potencia_gama_base = intensidade_gama_base.powf(gama) as u8;
+        let intensidade_potencia_base = if intensidade_base.powf(gama) > 255.0 {255} else {intensidade_base.powf(gama) as u8};
+        let intensidade_potencia_gama_base = if intensidade_gama_base.powf(gama) > 255.0 {255} else{intensidade_gama_base.powf(gama) as u8};
 
         let valor_intensidade_olho = pixel.2[0] as f32 * 0.2126 + pixel.2[1] as f32 * 0.7152 + pixel.2[2] as f32 * 0.0722;
         let intensidade_olho = valor_intensidade_olho as u8;
         let intensidade_gama_olho = intensidade_olho.powf(1.0/gama) as u8;
-        let intensidade_potencia_olho = intensidade_olho.powf(gama) as u8;
-        let intensidade_potencia_gama_olho = intensidade_gama_olho.log(2.0) as u8;
+        let intensidade_potencia_olho = if intensidade_olho.powf(gama) > 255.0 {255} else {intensidade_olho.powf(gama) as u8};
+        let intensidade_potencia_gama_olho = if intensidade_gama_olho.log(2.0) > 255.0 {255} else {intensidade_gama_olho.log(2.0) as u8};
 
         let temp_cinzabase = cinza_base.get_pixel_mut(pixel.0, pixel.1);
         *temp_cinzabase = Rgb([intensidade_base, intensidade_base, intensidade_base]);
