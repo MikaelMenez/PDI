@@ -1,311 +1,456 @@
-import { Button, ScrollView } from "std-widgets.slint";
+import { ScrollView, SpinBox, LineEdit, CheckBox, Slider } from "std-widgets.slint";
 
 export struct ImagemSaida {
-    img: image,
-    legenda: string,
+    nome: string,
+    imagem: image,
 }
+
+// ============================================================================
+// COMPONENTES REUTILIZÁVEIS (só estilo — nenhuma lógica de negócio aqui)
+// ============================================================================
+
+component Botao inherits Rectangle {
+    in property <string> rotulo;
+    in property <string> icone: "";
+    in property <color> cor-fundo: #313244;
+    in property <color> cor-texto: #cdd6f4;
+    in property <color> cor-borda: #45475a;
+    in property <bool> ativo: true;
+    callback clicado();
+
+    border-radius: 10px;
+    border-width: 1px;
+    border-color: root.cor-borda;
+    background: area.has-hover && root.ativo ? root.cor-fundo.brighter(18%) : root.cor-fundo;
+    opacity: root.ativo ? 1.0 : 0.45;
+
+    animate background { duration: 120ms; easing: ease-out; }
+
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        padding-top: 9px;
+        padding-bottom: 9px;
+        spacing: 8px;
+        alignment: center;
+
+        if root.icone != "": Text { text: root.icone; font-size: 14px; color: root.cor-texto; }
+        Text { text: root.rotulo; font-size: 13px; font-weight: 600; color: root.cor-texto; }
+    }
+
+    area := TouchArea {
+        enabled: root.ativo;
+        clicked => { root.clicado(); }
+    }
+}
+
+component ItemLista inherits Rectangle {
+    in property <string> rotulo;
+    in property <bool> selecionado: false;
+    callback clicado();
+
+    height: 38px;
+    border-radius: 8px;
+    background: area.has-hover ? #313244 : (root.selecionado ? #313244 : transparent);
+    animate background { duration: 100ms; }
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 8px;
+        spacing: 8px;
+
+        Rectangle {
+            width: 3px;
+            border-radius: 2px;
+            background: root.selecionado ? #89b4fa : transparent;
+        }
+
+        Text {
+            text: root.rotulo;
+            color: root.selecionado ? #cdd6f4 : #a6adc8;
+            font-weight: root.selecionado ? 700 : 400;
+            font-size: 12.5px;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+    }
+
+    area := TouchArea { clicked => { root.clicado(); } }
+}
+
+component Cartao inherits Rectangle {
+    background: #181825;
+    border-radius: 16px;
+    border-width: 1px;
+    border-color: #313244;
+    drop-shadow-color: #00000055;
+    drop-shadow-blur: 14px;
+    drop-shadow-offset-y: 3px;
+}
+
+component TituloCampo inherits Text {
+    color: #a6adc8;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+// ============================================================================
+// JANELA PRINCIPAL
+// ============================================================================
 
 export component AppWindow inherits Window {
     title: "Processador de Imagens Digitais (PDI) - UFPB";
-    min-width: 1024px;
-    min-height: 768px;
-    background: #1e1e2e;
+    min-width: 1200px;
+    min-height: 800px;
+    background: #11111b;
 
     // ------------------------------------------------------------------------
-    // PROPRIEDADES DE ESTADO E NOTIFICAÇÃO
+    // PROPRIEDADES DE ESTADO E COMUNICAÇÃO COM O RUST (API — não renomear)
     // ------------------------------------------------------------------------
-    in-out property <image> img_entrada;
-    in-out property <[ImagemSaida]> lista_saidas: [];
+    in-out property <[ImagemSaida]> lista_saidas;
+    in-out property <int> indice_saida_selecionada: -1;
+    in-out property <string> status_texto: "Pronto.";
+    in-out property <color> status_cor: #cdd6f4;
     in-out property <int> indice_selecionado: 0;
-    in-out property <string> processo_atual: "Nenhum";
 
-    in-out property <string> status_texto: "Sistema pronto. Aguardando ação...";
-    in-out property <brush> status_cor: #a6adc8;
+    in-out property <image> img-entrada;
+    in-out property <image> img-saida;
+
+    in-out property <string> nome_processo: "Nenhum";
+
+    in-out property <float> param-1: 128.0;
+    in-out property <float> param-2: 1.0;
+    in-out property <int> param-kernel: 3;
+    in-out property <float> desvio-padrao-sigma: 1.0;
+    in-out property <float> freq-corte: 50.0;
+    in-out property <int> ordem-filtro: 1;
+    in-out property <float> faixa-a: 0.0;
+    in-out property <float> faixa-b: 255.0;
+    in-out property <bool> preservar-fundo: false;
+    in-out property <float> intensidade-ruido: 25.0;
+    in-out property <float> distribuicao-ruido: 0.5;
 
     private property <[string]> filtros: [
-        "Decomposição RGB",
-        "Decomposição HSV",
-        "Limiarização",
-        "Transf. Logarítmica",
-        "Transf. de Potência (Gamma)",
-        "Equalização de Histograma",
-        "Fatiamento por Intensidade",
-        "Filtro de Média Gaussiana",
-        "Filtro de Mediana",
-        "Filtro de Mínimo",
-        "Filtro de Máximo",
-        "Máscara de Aguçamento",
-        "Realce por Laplaciano",
-        "Gradiente de Sobel",
-        "Passa-Baixa Gaussiano",
-        "Passa-Alta Gaussiano",
-        "Passa-Baixa Butterworth",
-        "Passa-Alta Butterworth",
+        "Decomposição RGB", "Decomposição HSV", "Limiarização",
+        "Transf. Logarítmica", "Transformação Potência",
+        "Equalização de Histograma", "Fatiamento por Intensidade",
+        "Filtro de Média Gaussiana", "Filtro de Mediana", "Filtro de Mínimo", "Filtro de Máximo",
+        "Máscara de Aguçamento", "Realce por Laplaciano", "Gradiente de Sobel",
+        "Passa-Baixa Gaussiano", "Passa-Alta Gaussiano",
+        "Passa-Baixa Butterworth", "Passa-Alta Butterworth",
         "Filtro Adaptativo de Mediana",
-        "Ruído Aditivo Gaussiano",
-        "Ruído Sal",
-        "Ruído Pimenta",
-        "Ruído Sal e Pimenta"
+        "Ruído Aditivo Gaussiano", "Ruído Sal, Pimenta, Sal e Pimenta"
     ];
 
-    callback abrir_arquivo();
-    callback selecionar_processo(int, string);
-    callback executar_processo();
-    callback salvar_atual();
-    callback salvar_todas();
+    callback abrir-arquivo();
+    callback salvar-atual();
+    callback salvar-todas();
+    callback processar();
+    callback selecionar-saida(int);
 
     VerticalLayout {
+        padding: 20px;
+        spacing: 16px;
+
+        // ====================================================================
+        // CABEÇALHO
+        // ====================================================================
         HorizontalLayout {
-            padding: 16px;
+            spacing: 16px;
+
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 1;
+                Text { text: "Processador de Imagens Digitais"; font-size: 20px; font-weight: 800; color: #cdd6f4; }
+                Text { text: "UFPB · Introdução ao Processamento Digital de Imagens"; font-size: 12px; color: #6c7086; }
+            }
+
+            Botao { rotulo: "Abrir Imagem"; icone: "📂"; cor-fundo: #89b4fa; cor-texto: #11111b; cor-borda: #89b4fa; clicado => { root.abrir-arquivo(); } }
+            Botao { rotulo: "Salvar Seleção"; icone: "💾"; cor-fundo: #181825; cor-texto: #94e2d5; cor-borda: #94e2d5; clicado => { root.salvar-atual(); } }
+            Botao { rotulo: "Exportar Tudo (.zip)"; icone: "📦"; cor-fundo: #181825; cor-texto: #fab387; cor-borda: #fab387; clicado => { root.salvar-todas(); } }
+        }
+
+        HorizontalLayout {
             spacing: 16px;
 
             // ====================================================================
-            // PAINEL LATERAL DE CONTROLE (Esquerda)
+            // BARRA LATERAL: LISTA DE PROCESSOS
             // ====================================================================
-            Rectangle {
-                width: 320px;
-                background: #252538;
-                border-radius: 8px;
+            Cartao {
+                width: 260px;
 
                 VerticalLayout {
-                    padding: 14px;
-                    spacing: 12px;
+                    padding: 16px;
+                    spacing: 10px;
 
-                    Button {
-                        text: "📂 Abrir Imagem";
-                        clicked => {
-                            root.abrir_arquivo();
-                        }
-                    }
-
-                    Rectangle {
-                        height: 45px;
-                        background: #11111b;
-                        border-radius: 4px;
-                        Text {
-                            text: "Filtro: " + root.processo_atual;
-                            color: #cdd6f4;
-                            font-size: 14px;
-                            vertical-alignment: center;
-                            horizontal-alignment: center;
-                        }
-                    }
-
-                    Text {
-                        text: "Selecione o Algoritmo:";
-                        color: #a6adc8;
-                        font-size: 12px;
-                    }
+                    TituloCampo { text: "PROCESSOS DISPONÍVEIS"; }
 
                     ScrollView {
                         VerticalLayout {
-                            spacing: 4px;
-                            for filtro[i] in root.filtros: Rectangle {
-                                height: 35px;
-                                background: root.processo_atual == filtro ? #45475a : #1e1e2e;
-                                border-radius: 4px;
-
-                                TouchArea {
-                                    clicked => {
-                                        root.selecionar_processo(i, filtro);
-                                    }
-                                }
-
-                                Text {
-                                    text: filtro;
-                                    color: root.processo_atual == filtro ? #f5c2e7 : #cdd6f4;
-                                    x: 10px;
-                                    vertical-alignment: center;
+                            spacing: 2px;
+                            for filtro[i] in root.filtros: ItemLista {
+                                rotulo: filtro;
+                                selecionado: root.nome_processo == filtro;
+                                clicado => {
+                                    root.nome_processo = filtro;
+                                    root.indice_selecionado = i;
                                 }
                             }
                         }
                     }
 
-                    Button {
-                        text: "⚡ Executar Processo";
-                        primary: true;
-                        enabled: root.processo_atual != "Nenhum";
-                        clicked => {
-                            root.executar_processo();
-                        }
-                    }
+                    Rectangle { height: 1px; background: #313244; }
 
-                    HorizontalLayout {
-                        spacing: 8px;
-                        height: 40px;
-
-                        Button {
-                            text: "💾 Salvar Atual";
-                            enabled: root.lista_saidas.length > 0;
-                            clicked => {
-                                root.salvar_atual();
-                            }
-                        }
-
-                        Button {
-                            text: "📦 Salvar Todas";
-                            enabled: root.lista_saidas.length > 0;
-                            clicked => {
-                                root.salvar_todas();
-                            }
-                        }
+                    Botao {
+                        rotulo: "Executar Filtro";
+                        icone: "⚡";
+                        cor-fundo: #a6e3a1;
+                        cor-texto: #11111b;
+                        cor-borda: #a6e3a1;
+                        ativo: root.nome_processo != "Nenhum" && root.nome_processo != "";
+                        clicado => { root.processar(); }
                     }
                 }
             }
 
             // ====================================================================
-            // ÁREA DE VISUALIZAÇÃO DAS MATRIZES (Direita) - AGORA ADAPTÁVEL
+            // ÁREA PRINCIPAL
             // ====================================================================
             VerticalLayout {
                 spacing: 16px;
-                // Faz com que toda a área da direita estique para preencher o tamanho da janela
                 vertical-stretch: 1;
 
+                // 1. IMAGENS
                 HorizontalLayout {
                     spacing: 16px;
-                    vertical-stretch: 1;
+                    vertical-stretch: 2;
 
-                    // 🟦 CONTAINER DE ENTRADA (AZUL)
-                    VerticalLayout {
-                        spacing: 6px;
-                        vertical-stretch: 1;
-                        Text {
-                            text: "IMAGEM DE ENTRADA (ORIGINAL)";
-                            color: #89b4fa;
-                            font-weight: 700;
-                        }
-
-                        Rectangle {
-                            min-height: 300px;   // Evita colapsar se a janela for muito reduzida
-                            vertical-stretch: 1; // 👈 Estica dinamicamente baseado no monitor/resolução
-                            background: #11111b;
-                            border-width: 2px;
-                            border-color: #89b4fa;
-                            border-radius: 8px;
-                            clip: true;
-
-                            Image {
-                                source: root.img_entrada;
-                                width: 100%;
-                                height: 100%;
-                                image-fit: contain; // Adapta a proporção interna da imagem sem esticar os pixels
+                    Cartao {
+                        clip: true;
+                        VerticalLayout {
+                            HorizontalLayout {
+                                padding: 12px;
+                                Text { text: "IMAGEM DE ENTRADA"; font-weight: 700; font-size: 11px; color: #a6adc8; }
                             }
-                        }
-
-                        Text {
-                            text: " ";
-                            font-size: 14px;
+                            Rectangle {
+                                background: #0c0c14;
+                                Image { source: root.img-entrada; width: 100%; height: 100%; image-fit: contain; }
+                            }
                         }
                     }
 
-                    // 🟥 CONTAINER DE SAÍDA REATIVO (VERMELHO)
-                    VerticalLayout {
-                        spacing: 6px;
-                        vertical-stretch: 1;
-                        Text {
-                            text: "PRODUTO DO PROCESSAMENTO (SAÍDA)";
-                            color: #f38ba8;
-                            font-weight: 700;
-                        }
-
-                        Rectangle {
-                            min-height: 300px;   // Seguro contra colapsos estruturais
-                            vertical-stretch: 1; // 👈 Acompanha simetricamente o painel azul
-                            background: #11111b;
-                            border-width: 2px;
-                            border-color: #f38ba8;
-                            border-radius: 8px;
-                            clip: true;
-
-                            if root.lista_saidas.length > 0: Image {
-                                source: root.lista_saidas[root.indice_selecionado].img;
-                                width: 100%;
-                                height: 100%;
-                                image-fit: contain;
+                    Cartao {
+                        clip: true;
+                        VerticalLayout {
+                            HorizontalLayout {
+                                padding: 12px;
+                                Text { text: "IMAGEM DE SAÍDA"; font-weight: 700; font-size: 11px; color: #94e2d5; }
                             }
-
-                            if root.lista_saidas.length == 0: Text {
-                                text: "Aguardando execução de algum algoritmo...";
-                                color: #585b70;
-                                vertical-alignment: center;
-                                horizontal-alignment: center;
+                            Rectangle {
+                                background: #0c0c14;
+                                Image { source: root.img-saida; width: 100%; height: 100%; image-fit: contain; }
                             }
-                        }
-
-                        if root.lista_saidas.length > 0: Text {
-                            text: root.lista_saidas[root.indice_selecionado].legenda;
-                            color: #a6adc8;
-                            font-size: 14px;
-                            font-weight: 700;
-                            horizontal-alignment: center;
-                        }
-
-                        if root.lista_saidas.length == 0: Text {
-                            text: "Nenhum processamento ativo";
-                            color: #585b70;
-                            font-size: 14px;
-                            horizontal-alignment: center;
                         }
                     }
                 }
 
-                // CONTROLES DE NAVEGAÇÃO MULTI-SAÍDA
-                if root.lista_saidas.length > 1: HorizontalLayout {
-                    alignment: center;
+                // 2. PARÂMETROS DINÂMICOS
+                if root.nome_processo != "Nenhum" && root.nome_processo != "" &&
+                   root.nome_processo != "Decomposição RGB" && root.nome_processo != "Decomposição HSV" &&
+                   root.nome_processo != "Equalização de Histograma":
+                Cartao {
+                    min-height: 88px;
 
-                    Rectangle {
-                        height: 50px;
-                        background: #252538;
-                        border-radius: 8px;
-                        width: 400px;
+                    VerticalLayout {
+                        padding: 16px;
+                        spacing: 10px;
 
                         HorizontalLayout {
-                            padding: 8px;
-                            spacing: 20px;
-                            alignment: center;
+                            spacing: 8px;
+                            Rectangle { width: 4px; border-radius: 2px; background: #f9e2af; }
+                            Text { text: "PARÂMETROS · " + root.nome_processo; font-weight: 700; font-size: 11px; color: #f9e2af; vertical-alignment: center; }
+                        }
 
-                            Button {
-                                text: "◀ Anterior";
-                                enabled: root.indice_selecionado > 0;
-                                clicked => {
-                                    root.indice_selecionado -= 1;
+                        ScrollView {
+                            HorizontalLayout {
+                                spacing: 24px;
+                                alignment: start;
+
+                                if root.nome_processo == "Filtro de Média Gaussiana" || root.nome_processo == "Filtro de Mediana" ||
+                                   root.nome_processo == "Filtro de Mínimo" || root.nome_processo == "Filtro de Máximo" ||
+                                   root.nome_processo == "Máscara de Aguçamento":
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    TituloCampo { text: "JANELA (KERNEL)"; }
+                                    SpinBox { value: root.param-kernel; minimum: 1; maximum: 99; edited(v) => { root.param-kernel = v; } }
                                 }
-                            }
 
-                            Text {
-                                text: (root.indice_selecionado + 1) + " / " + root.lista_saidas.length;
-                                color: #cdd6f4;
-                                font-size: 14px;
-                                vertical-alignment: center;
-                            }
+                                if root.nome_processo == "Filtro Adaptativo de Mediana":
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    TituloCampo { text: "JANELA MÁXIMA"; }
+                                    SpinBox { value: root.param-kernel; minimum: 3; maximum: 99; edited(v) => { root.param-kernel = v; } }
+                                }
 
-                            Button {
-                                text: "Próxima ▶";
-                                enabled: root.indice_selecionado < root.lista_saidas.length - 1;
-                                clicked => {
-                                    root.indice_selecionado += 1;
+                                if root.nome_processo == "Filtro de Média Gaussiana":
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    width: 180px;
+                                    TituloCampo { text: "DESVIO PADRÃO (σ) · " + Math.round(root.desvio-padrao-sigma * 100) / 100; }
+                                    Slider { minimum: 0.1; maximum: 10; value: root.desvio-padrao-sigma; changed(v) => { root.desvio-padrao-sigma = v; } }
+                                }
+
+                                if root.nome_processo == "Limiarização" || root.nome_processo == "Transf. Logarítmica" || root.nome_processo == "Transformação Potência":
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    width: 120px;
+                                    TituloCampo { text: root.nome_processo == "Limiarização" ? "LIMIAR (k)" : "GANHO (c)"; }
+                                    LineEdit { text: root.param-1; edited(v) => { root.param-1 = v.to-float(); } }
+                                }
+
+                                if root.nome_processo == "Transformação Potência":
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    width: 120px;
+                                    TituloCampo { text: "GAMA (γ)"; }
+                                    LineEdit { text: root.param-2; edited(v) => { root.param-2 = v.to-float(); } }
+                                }
+
+                                if root.nome_processo == "Fatiamento por Intensidade":
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    TituloCampo { text: "FAIXA DE INTERESSE [A, B]"; }
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        LineEdit { width: 70px; text: root.faixa-a; edited(v) => { root.faixa-a = v.to-float(); } }
+                                        LineEdit { width: 70px; text: root.faixa-b; edited(v) => { root.faixa-b = v.to-float(); } }
+                                        CheckBox { text: "Preservar fundo"; checked: root.preservar-fundo; toggled => { root.preservar-fundo = self.checked; } }
+                                    }
+                                }
+
+                                if root.nome_processo == "Passa-Baixa Gaussiano" || root.nome_processo == "Passa-Alta Gaussiano" ||
+                                   root.nome_processo == "Passa-Baixa Butterworth" || root.nome_processo == "Passa-Alta Butterworth":
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    width: 200px;
+                                    TituloCampo { text: "FREQ. DE CORTE · " + Math.round(root.freq-corte); }
+                                    Slider { minimum: 1; maximum: 300; value: root.freq-corte; changed(v) => { root.freq-corte = v; } }
+                                }
+
+                                if root.nome_processo == "Passa-Baixa Butterworth" || root.nome_processo == "Passa-Alta Butterworth":
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    TituloCampo { text: "ORDEM"; }
+                                    SpinBox { value: root.ordem-filtro; minimum: 1; maximum: 10; edited(v) => { root.ordem-filtro = v; } }
+                                }
+
+                                if root.nome_processo == "Ruído Aditivo Gaussiano":
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    width: 220px;
+                                    TituloCampo { text: "INTENSIDADE · " + Math.round(root.intensidade-ruido); }
+                                    Slider { minimum: 0; maximum: 100; value: root.intensidade-ruido; changed(v) => { root.intensidade-ruido = v; } }
+                                    TituloCampo { text: "DISTRIBUIÇÃO (DESVIO) · " + Math.round(root.distribuicao-ruido * 100) / 100; }
+                                    Slider { minimum: 0; maximum: 1; value: root.distribuicao-ruido; changed(v) => { root.distribuicao-ruido = v; } }
+                                }
+
+                                if root.nome_processo == "Ruído Sal, Pimenta, Sal e Pimenta":
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    width: 220px;
+                                    TituloCampo { text: "DISTRIBUIÇÃO (PROBABILIDADE) · " + Math.round(root.distribuicao-ruido * 100) / 100; }
+                                    Slider { minimum: 0; maximum: 1; value: root.distribuicao-ruido; changed(v) => { root.distribuicao-ruido = v; } }
                                 }
                             }
                         }
                     }
                 }
-            }
-        }
 
-        // ====================================================================
-        // BARRA DE STATUS DINÂMICA
-        // ====================================================================
-        Rectangle {
-            height: 32px;
-            background: #11111b;
+                // 3. GALERIA DE RESULTADOS
+                if root.lista_saidas.length > 0: Cartao {
+                    min-height: 160px;
+                    vertical-stretch: 0.6;
 
-            Text {
-                text: root.status_texto;
-                color: root.status_cor;
-                x: 16px;
-                vertical-alignment: center;
-                font-size: 13px;
-                font-weight: 600;
+                    VerticalLayout {
+                        padding: 14px;
+                        spacing: 8px;
+
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Rectangle { width: 4px; border-radius: 2px; background: #c6a0f6; }
+                            Text { text: "RESULTADOS · " + root.lista_saidas.length; font-weight: 700; font-size: 11px; color: #c6a0f6; vertical-alignment: center; }
+                        }
+
+                        ScrollView {
+                            HorizontalLayout {
+                                spacing: 12px;
+                                alignment: start;
+
+                                for saida[i] in root.lista_saidas: Rectangle {
+                                    width: 130px;
+                                    border-radius: 10px;
+                                    border-width: root.indice_saida_selecionada == i ? 2px : 1px;
+                                    border-color: root.indice_saida_selecionada == i ? #89b4fa : #313244;
+                                    background: item-area.has-hover ? #1e1e2e : #181825;
+                                    clip: true;
+                                    animate background { duration: 100ms; }
+
+                                    item-area := TouchArea { clicked => { root.selecionar-saida(i); } }
+
+                                    VerticalLayout {
+                                        padding: 8px;
+                                        spacing: 6px;
+                                        Rectangle {
+                                            height: 80px;
+                                            background: #0c0c14;
+                                            border-radius: 6px;
+                                            clip: true;
+                                            Image { source: saida.imagem; width: 100%; height: 100%; image-fit: contain; }
+                                        }
+                                        Text {
+                                            text: saida.nome;
+                                            color: #a6adc8;
+                                            font-size: 10px;
+                                            horizontal-alignment: center;
+                                            overflow: elide;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 4. BARRA DE STATUS
+                Rectangle {
+                    height: 40px;
+                    background: #181825;
+                    border-radius: 10px;
+                    border-width: 1px;
+                    border-color: #313244;
+
+                    HorizontalLayout {
+                        padding-left: 14px;
+                        padding-right: 14px;
+                        spacing: 8px;
+                        alignment: start;
+
+                        Rectangle {
+                            width: 8px;
+                            height: 8px;
+                            border-radius: 4px;
+                            background: root.status_cor;
+                            y: (parent.height - self.height) / 2;
+                        }
+
+                        Text {
+                            text: root.status_texto;
+                            color: #cdd6f4;
+                            vertical-alignment: center;
+                            font-size: 12.5px;
+                        }
+                    }
+                }
             }
         }
     }

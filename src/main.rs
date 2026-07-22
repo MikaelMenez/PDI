@@ -1,339 +1,359 @@
-// ============================================================================
-// PROCESSADOR DE IMAGENS - CONCURRÊNCIA COM TOKIO & SLINT STATUS BAR
-// ============================================================================
-
-use slint::Model;
-use slint::{ComponentHandle, Image, ModelRc, VecModel};
+use image::DynamicImage;
+use slint::{ComponentHandle, Image, ModelRc, SharedPixelBuffer, VecModel};
 use std::cell::RefCell;
-use std::fs::File;
-use std::io::Write;
 use std::rc::Rc;
+
 mod processos;
+
 slint::include_modules!();
 
-// Cores base do tema Catppuccin Mocha para passar ao Slint
-const COR_SUCESSO: slint::Color = slint::Color::from_rgb_u8(166, 227, 161); // Verde
-const COR_ERRO: slint::Color = slint::Color::from_rgb_u8(243, 139, 168); // Vermelho
-const COR_ALERTA: slint::Color = slint::Color::from_rgb_u8(249, 226, 175); // Amarelo
+const COR_SUCESSO: slint::Color = slint::Color::from_rgb_u8(166, 227, 161);
+const COR_ERRO: slint::Color = slint::Color::from_rgb_u8(243, 139, 168);
+const COR_INFO: slint::Color = slint::Color::from_rgb_u8(138, 173, 244);
 
-#[tokio::main]
-async fn main() -> Result<(), slint::PlatformError> {
+/// Todos os parâmetros configuráveis na interface, já lidos e tipados.
+/// Toda função de processamento recebe uma referência a isto — use só os
+/// campos que fizerem sentido pro seu processo e ignore o resto.
+pub struct Parametros {
+    pub param_1: f32,
+    pub param_2: f32,
+    pub kernel: u32,
+    pub sigma: f32,
+    pub freq_corte: f32,
+    pub ordem: u32,
+    pub faixa_a: f32,
+    pub faixa_b: f32,
+    pub preservar_fundo: bool,
+    pub intensidade_ruido: f32,
+    pub distribuicao_ruido: f32,
+}
+
+fn extrair_parametros(app: &AppWindow) -> Parametros {
+    Parametros {
+        param_1: app.get_param_1(),
+        param_2: app.get_param_2(),
+        kernel: app.get_param_kernel().max(1) as u32,
+        sigma: app.get_desvio_padrao_sigma(),
+        freq_corte: app.get_freq_corte(),
+        ordem: app.get_ordem_filtro().max(1) as u32,
+        faixa_a: app.get_faixa_a(),
+        faixa_b: app.get_faixa_b(),
+        preservar_fundo: app.get_preservar_fundo(),
+        intensidade_ruido: app.get_intensidade_ruido(),
+        distribuicao_ruido: app.get_distribuicao_ruido(),
+    }
+}
+
+/// Converte uma DynamicImage (crate `image`) para slint::Image.
+fn dynimg_para_slint(img: &DynamicImage) -> Image {
+    let rgba = img.to_rgba8();
+    let (w, h) = (rgba.width(), rgba.height());
+    Image::from_rgba8(SharedPixelBuffer::clone_from_slice(rgba.as_raw(), w, h))
+}
+
+/// ---------------------------------------------------------------------------
+/// TABELA DE PROCESSOS — o único lugar que muda quando você implementa algo novo
+/// ---------------------------------------------------------------------------
+/// Passo a passo pra adicionar um processo:
+///   1. Escreva em processos.rs uma função com esta assinatura:
+///        pub fn minha_funcao(img: DynamicImage, p: &Parametros) -> Vec<(DynamicImage, String)>
+///      (pode ignorar os campos de `p` que não usar)
+///   2. Acrescente UMA linha abaixo, com o nome EXATO usado na lista
+///      `filtros` do arquivo .slint.
+/// Conversão pra tela, galeria de resultados, imagem principal e status são
+/// tratados automaticamente — não precisa tocar em mais nada.
+fn executar_processo(
+    nome: &str,
+    img: DynamicImage,
+    p: &Parametros,
+) -> Option<Vec<(DynamicImage, String)>> {
+    match nome {
+        "Decomposição RGB" => Some(processos::decomposicao_rgb(img)),
+        "Decomposição HSV" => Some(processos::decomposicao_hsv(img)),
+        "Limiarização" => Some(processos::limiarizacao(
+            img,
+            p.param_1.clamp(0.0, 255.0) as u8,
+        )),
+        "Transf. Logarítmica" => Some(processos::transformacao_log(img, p.param_1)),
+        "Transformação Potência" => Some(processos::transformacao_potencia(img, p.param_2)),
+
+        // Vá acrescentando aqui à medida que implementar em processos.rs, ex:
+        // "Equalização de Histograma" => Some(processos::equalizacao_histograma(img)),
+        // "Fatiamento por Intensidade" => Some(processos::fatiamento_intensidade(img, p)),
+        // "Filtro de Média Gaussiana" => Some(processos::filtro_media_gaussiana(img, p)),
+        // "Filtro de Mediana" => Some(processos::filtro_mediana(img, p)),
+        // "Filtro de Mínimo" => Some(processos::filtro_minimo(img, p)),
+        // "Filtro de Máximo" => Some(processos::filtro_maximo(img, p)),
+        // "Máscara de Aguçamento" => Some(processos::mascara_de_agucamento(img, p)),
+        // "Realce por Laplaciano" => Some(processos::realce_laplaciano(img)),
+        // "Gradiente de Sobel" => Some(processos::gradiente_sobel(img)),
+        // "Passa-Baixa Gaussiano" => Some(processos::passa_baixa_gaussiano(img, p)),
+        // "Passa-Alta Gaussiano" => Some(processos::passa_alta_gaussiano(img, p)),
+        // "Passa-Baixa Butterworth" => Some(processos::passa_baixa_butterworth(img, p)),
+        // "Passa-Alta Butterworth" => Some(processos::passa_alta_butterworth(img, p)),
+        // "Filtro Adaptativo de Mediana" => Some(processos::filtro_adaptativo_mediana(img, p)),
+        // "Ruído Aditivo Gaussiano" => Some(processos::ruido_aditivo_gaussiano(img, p)),
+        // "Ruído Sal, Pimenta, Sal e Pimenta" => Some(processos::ruido_sal_pimenta(img, p)),
+        _ => None,
+    }
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = AppWindow::new()?;
-    let app_weak = app.as_weak();
 
-    // Armazenamento em memória das matrizes brutas processadas
-    let imagem_original = Rc::new(RefCell::new(None::<image::DynamicImage>));
-    let historico_rust = Rc::new(RefCell::new(Vec::<(image::DynamicImage, String)>::new()));
-
-    let lista_saidas_model = Rc::new(VecModel::<ImagemSaida>::default());
+    let lista_saidas_model: Rc<VecModel<ImagemSaida>> = Rc::new(VecModel::default());
     app.set_lista_saidas(ModelRc::from(lista_saidas_model.clone()));
 
-    // --- Callback: Abrir Arquivo ---
-    let app_clone = app_weak.clone();
-    let img_orig_clone = imagem_original.clone();
-    let hist_rust_clone = historico_rust.clone();
-    let saidas_clone = lista_saidas_model.clone();
+    // Imagem original carregada — mantida fora do Slint pra poder reprocessar
+    // sempre que o usuário mudar parâmetros e apertar "Executar" de novo.
+    let imagem_entrada: Rc<RefCell<Option<DynamicImage>>> = Rc::new(RefCell::new(None));
+
+    // Últimos resultados (DynamicImage + nome), na mesma ordem da galeria —
+    // é a partir daqui que "Salvar" e "Salvar Todas" leem os dados de fato.
+    let resultados_atuais: Rc<RefCell<Vec<(DynamicImage, String)>>> =
+        Rc::new(RefCell::new(Vec::new()));
+
+    // ------------------------------------------------------------------------
+    // 1. ABRIR ARQUIVO
+    // ------------------------------------------------------------------------
+    let app_weak = app.as_weak();
+    let imagem_entrada_abrir = imagem_entrada.clone();
     app.on_abrir_arquivo(move || {
-        let app = app_clone.unwrap();
-        let arquivo_selecionado = rfd::FileDialog::new()
-            .set_title("Selecione uma imagem para o PDI")
-            .add_filter("Imagens (*.png, *.jpg, *.jpeg)", &["png", "jpg", "jpeg"])
-            .pick_file();
+        let app = match app_weak.upgrade() {
+            Some(a) => a,
+            None => return,
+        };
 
-        if let Some(caminho) = arquivo_selecionado {
-            if let Ok(din_img) = image::open(&caminho) {
-                *img_orig_clone.borrow_mut() = Some(din_img.clone());
-                hist_rust_clone.borrow_mut().clear();
-                saidas_clone.clear();
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("Imagens PNG", &["png"])
+            .pick_file()
+        {
+            match image::open(&path) {
+                Ok(dyn_img) => {
+                    app.set_img_entrada(dynimg_para_slint(&dyn_img));
+                    app.set_img_saida(Image::default());
+                    app.set_indice_saida_selecionada(-1);
+                    *imagem_entrada_abrir.borrow_mut() = Some(dyn_img);
 
-                let slint_img = converter_para_slint(&din_img);
-                app.set_img_entrada(slint_img);
-                app.set_status_texto("Imagem de entrada carregada com sucesso!".into());
-                app.set_status_cor(COR_SUCESSO.into());
-            } else {
-                app.set_status_texto(
-                    "Erro: Não foi possível ler o arquivo de imagem especificado.".into(),
-                );
-                app.set_status_cor(COR_ERRO.into());
+                    app.set_status_texto(
+                        format!(
+                            "Imagem carregada: {:?}",
+                            path.file_name().unwrap_or_default()
+                        )
+                        .into(),
+                    );
+                    app.set_status_cor(COR_SUCESSO);
+                }
+                Err(e) => {
+                    app.set_status_texto(format!("Erro ao carregar imagem: {}", e).into());
+                    app.set_status_cor(COR_ERRO);
+                }
             }
         }
     });
 
-    // --- Callback: Selecionar Processo ---
-    let app_clone = app_weak.clone();
-    app.on_selecionar_processo(move |_index, nome_processo| {
-        let app = app_clone.unwrap();
-        app.set_processo_atual(nome_processo);
-        app.set_status_texto(
-            format!(
-                "Pronto para aplicar o algoritmo: {}",
-                app.get_processo_atual()
-            )
-            .into(),
-        );
-        app.set_status_cor(slint::Color::from_rgb_u8(205, 214, 244).into());
-    });
+    // ------------------------------------------------------------------------
+    // 2. EXECUTAR PROCESSO
+    // ------------------------------------------------------------------------
+    let app_weak = app.as_weak();
+    let imagem_entrada_proc = imagem_entrada.clone();
+    let resultados_proc = resultados_atuais.clone();
+    let lista_saidas_model_proc = lista_saidas_model.clone();
+    app.on_processar(move || {
+        let app = match app_weak.upgrade() {
+            Some(a) => a,
+            None => return,
+        };
 
-    // --- Callback: Executar Processo ---
-    let app_clone = app_weak.clone();
-    let img_orig_clone = imagem_original.clone();
-    let hist_rust_clone = historico_rust.clone();
-    let saidas_clone = lista_saidas_model.clone();
-    app.on_executar_processo(move || {
-        let app = app_clone.unwrap();
+        let img = match imagem_entrada_proc.borrow().clone() {
+            Some(img) => img,
+            None => {
+                app.set_status_texto("Carregue uma imagem antes de processar.".into());
+                app.set_status_cor(COR_ERRO);
+                return;
+            }
+        };
 
-        if let Some(img_entrada_rust) = img_orig_clone.borrow().clone() {
-            let filtro_selecionado = app.get_processo_atual();
+        let nome_processo = app.get_nome_processo();
+        let params = extrair_parametros(&app);
 
-            let resultados_pdi = aplicar_algoritmo_pdi(&filtro_selecionado, img_entrada_rust);
-
-            if !resultados_pdi.is_empty() {
-                let mut hist_mut = hist_rust_clone.borrow_mut();
-                saidas_clone.clear(); // Limpa execuções antigas
-
-                for (nova_img_rust, legenda_txt) in resultados_pdi {
-                    let slint_img = converter_para_slint(&nova_img_rust);
-                    hist_mut.push((nova_img_rust, legenda_txt.clone()));
-
-                    saidas_clone.push(ImagemSaida {
-                        img: slint_img,
-                        legenda: slint::SharedString::from(legenda_txt),
-                    });
+        match executar_processo(nome_processo.as_str(), img, &params) {
+            Some(resultados) => {
+                if resultados.is_empty() {
+                    app.set_status_texto("Processo não retornou nenhuma imagem.".into());
+                    app.set_status_cor(COR_ERRO);
+                    return;
                 }
 
-                let total_imagens = saidas_clone.row_count();
-                app.set_indice_selecionado((total_imagens - 1) as i32);
+                // Popula a galeria de miniaturas
+                let itens: Vec<ImagemSaida> = resultados
+                    .iter()
+                    .map(|(img, nome)| ImagemSaida {
+                        nome: nome.clone().into(),
+                        imagem: dynimg_para_slint(img),
+                    })
+                    .collect();
+                lista_saidas_model_proc.set_vec(itens);
+
+                // Mostra a primeira imagem como resultado principal
+                app.set_img_saida(dynimg_para_slint(&resultados[0].0));
+                app.set_indice_saida_selecionada(0);
+
                 app.set_status_texto(
                     format!(
-                        "Sucesso: '{}' aplicado com {} saída(s).",
-                        filtro_selecionado, total_imagens
+                        "'{}' aplicado com sucesso! {} imagem(ns) gerada(s).",
+                        nome_processo,
+                        resultados.len()
                     )
                     .into(),
                 );
-                app.set_status_cor(COR_SUCESSO.into());
+                app.set_status_cor(COR_SUCESSO);
+
+                *resultados_proc.borrow_mut() = resultados;
             }
-        } else {
-            app.set_status_texto("Erro: Carregue uma imagem de entrada antes de executar.".into());
-            app.set_status_cor(COR_ERRO.into());
+            None => {
+                app.set_status_texto(
+                    format!(
+                        "'{}' ainda não foi implementado em processos.rs.",
+                        nome_processo
+                    )
+                    .into(),
+                );
+                app.set_status_cor(COR_INFO);
+            }
         }
     });
 
-    // --- Callback: Salvar Apenas a Imagem Atual (Tokio Tasks) ---
-    let app_clone = app_weak.clone();
-    let hist_rust_clone = historico_rust.clone();
+    // ------------------------------------------------------------------------
+    // 3. SELECIONAR UMA SAÍDA DA GALERIA (mostra em tamanho grande)
+    // ------------------------------------------------------------------------
+    let app_weak = app.as_weak();
+    let resultados_selecionar = resultados_atuais.clone();
+    app.on_selecionar_saida(move |indice| {
+        let app = match app_weak.upgrade() {
+            Some(a) => a,
+            None => return,
+        };
+        let resultados = resultados_selecionar.borrow();
+        if let Some((img, _nome)) = resultados.get(indice as usize) {
+            app.set_img_saida(dynimg_para_slint(img));
+            app.set_indice_saida_selecionada(indice);
+        }
+    });
+
+    // ------------------------------------------------------------------------
+    // 4. SALVAR SAÍDA SELECIONADA
+    // ------------------------------------------------------------------------
+    let app_weak = app.as_weak();
+    let resultados_salvar = resultados_atuais.clone();
     app.on_salvar_atual(move || {
-        let app = app_clone.unwrap();
-        let indice = app.get_indice_selecionado() as usize;
-        let historico = hist_rust_clone.borrow();
+        let app = match app_weak.upgrade() {
+            Some(a) => a,
+            None => return,
+        };
 
-        if let Some((imagem_para_salvar, legenda)) = historico.get(indice) {
-            let nome_saneado = legenda
-                .to_lowercase()
-                .replace(" ", "_")
-                .replace("(", "")
-                .replace(")", "")
-                + ".png";
+        let indice = app.get_indice_saida_selecionada();
+        let resultados = resultados_salvar.borrow();
 
-            let caminho_salvar = rfd::FileDialog::new()
-                .set_title("Salvar Imagem Selecionada")
-                .add_filter("Imagem PNG (*.png)", &["png"])
-                .add_filter("Imagem JPG (*.jpg)", &["jpg"])
-                .set_file_name(&nome_saneado)
-                .save_file();
+        let imagem = if indice >= 0 {
+            resultados.get(indice as usize).map(|(img, _)| img)
+        } else {
+            resultados.first().map(|(img, _)| img)
+        };
 
-            if let Some(caminho) = caminho_salvar {
-                let img_clone = imagem_para_salvar.clone();
-                let ui_handle = app_clone.clone();
+        let imagem = match imagem {
+            Some(img) => img,
+            None => {
+                app.set_status_texto("Nenhum resultado disponível para salvar.".into());
+                app.set_status_cor(COR_ERRO);
+                return;
+            }
+        };
 
-                app.set_status_texto("Salvando arquivo no disco...".into());
-                app.set_status_cor(COR_ALERTA.into());
-
-                // Aloca o salvamento pesado no gerenciador de tarefas blocantes do Tokio
-                tokio::spawn(async move {
-                    let resultado =
-                        tokio::task::spawn_blocking(move || img_clone.save(&caminho)).await;
-
-                    // Devolve o feedback para a Thread Principal de UI de forma segura
-                    slint::invoke_from_event_loop(move || {
-                        if let Some(ui) = ui_handle.upgrade() {
-                            match resultado {
-                                Ok(Ok(())) => {
-                                    ui.set_status_texto(
-                                        "Imagem individual salva com absoluto sucesso!".into(),
-                                    );
-                                    ui.set_status_cor(COR_SUCESSO.into());
-                                }
-                                _ => {
-                                    ui.set_status_texto(
-                                        "Erro crítico ao tentar gravar o arquivo de imagem.".into(),
-                                    );
-                                    ui.set_status_cor(COR_ERRO.into());
-                                }
-                            }
-                        }
-                    })
-                    .unwrap();
-                });
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("PNG", &["png"])
+            .set_file_name("resultado.png")
+            .save_file()
+        {
+            match imagem.save(&path) {
+                Ok(_) => {
+                    app.set_status_texto(format!("Imagem salva em {:?}", path).into());
+                    app.set_status_cor(COR_SUCESSO);
+                }
+                Err(e) => {
+                    app.set_status_texto(format!("Erro ao salvar: {}", e).into());
+                    app.set_status_cor(COR_ERRO);
+                }
             }
         }
     });
 
-    // --- Callback: Salvar Todas em ZIP (Tokio Tasks - Sem Corrupção de Cabeçalho) ---
-    let app_clone = app_weak.clone();
-    let hist_rust_clone = historico_rust.clone();
+    // ------------------------------------------------------------------------
+    // 5. SALVAR TODAS AS SAÍDAS (.zip)
+    // ------------------------------------------------------------------------
+    let app_weak = app.as_weak();
+    let resultados_zip = resultados_atuais.clone();
     app.on_salvar_todas(move || {
-        let app = app_clone.unwrap();
-        let historico = hist_rust_clone.borrow();
-        if historico.is_empty() {
-            app.set_status_texto(
-                "Aviso: Histórico de processamento vazio. Nada a ser exportado.".into(),
-            );
-            app.set_status_cor(COR_ALERTA.into());
+        let app = match app_weak.upgrade() {
+            Some(a) => a,
+            None => return,
+        };
+
+        let resultados = resultados_zip.borrow();
+        if resultados.is_empty() {
+            app.set_status_texto("Nenhum resultado disponível para exportar.".into());
+            app.set_status_cor(COR_ERRO);
             return;
         }
 
-        let historico_snapshot: Vec<(image::DynamicImage, String)> = historico.clone();
-
-        let caminho_salvar = rfd::FileDialog::new()
-            .set_title("Salvar Todos os Resultados")
-            .add_filter("Arquivo ZIP (*.zip)", &["zip"])
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("ZIP", &["zip"])
             .set_file_name("resultados.zip")
-            .save_file();
-
-        if let Some(caminho) = caminho_salvar {
-            let ui_handle = app_clone.clone();
-            app.set_status_texto(
-                format!(
-                    "Compactando {} imagens em background...",
-                    historico_snapshot.len()
-                )
-                .into(),
-            );
-            app.set_status_cor(COR_ALERTA.into());
-
-            tokio::spawn(async move {
-                // Executa a compressão I/O pesada isolada de forma assíncrona
-                let resultado_zip = tokio::task::spawn_blocking(move || -> Result<(), String> {
-                    let arquivo_zip = File::create(&caminho)
-                        .map_err(|e| format!("Falha ao criar arquivo: {:?}", e))?;
-                    let mut zip = zip::ZipWriter::new(arquivo_zip);
-                    let options = zip::write::FileOptions::<()>::default()
-                        .compression_method(zip::CompressionMethod::Deflated);
-
-                    for (i, (img_rust, legenda)) in historico_snapshot.iter().enumerate() {
-                        let nome_saneado = legenda
-                            .to_lowercase()
-                            .replace(" ", "_")
-                            .replace("(", "")
-                            .replace(")", "");
-                        let nome_no_zip = format!("{:02}_{}.png", i + 1, nome_saneado);
-
-                        zip.start_file(nome_no_zip, options)
-                            .map_err(|e| format!("Erro na estrutura do zip: {:?}", e))?;
-
-                        let mut buffer = std::io::Cursor::new(Vec::new());
-                        img_rust
-                            .write_to(&mut buffer, image::ImageFormat::Png)
-                            .map_err(|e| format!("Erro na codificação PNG: {:?}", e))?;
-
-                        zip.write_all(buffer.get_ref())
-                            .map_err(|e| format!("Erro de escrita interna: {:?}", e))?;
-                    }
-
-                    // 🔥 Essencial: O zip agora SÓ finaliza de verdade se passar por todo o fluxo sem dar early return
-                    zip.finish()
-                        .map_err(|e| format!("Erro ao fechar diretório central do ZIP: {:?}", e))?;
-                    Ok(())
-                })
-                .await;
-
-                // Despacha o veredito final para os elementos gráficos da UI
-                slint::invoke_from_event_loop(move || {
-                    if let Some(ui) = ui_handle.upgrade() {
-                        match resultado_zip {
-                            Ok(Ok(())) => {
-                                ui.set_status_texto(
-                                    "Arquivo compactado ZIP gerado e salvo com sucesso!".into(),
-                                );
-                                ui.set_status_cor(COR_SUCESSO.into());
-                            }
-                            Ok(Err(erro_msg)) => {
-                                ui.set_status_texto(
-                                    format!("Erro na compactação: {}", erro_msg).into(),
-                                );
-                                ui.set_status_cor(COR_ERRO.into());
-                            }
-                            Err(_) => {
-                                ui.set_status_texto(
-                                    "Erro crítico: A tarefa em background entrou em colapso."
-                                        .into(),
-                                );
-                                ui.set_status_cor(COR_ERRO.into());
-                            }
-                        }
-                    }
-                })
-                .unwrap();
-            });
+            .save_file()
+        {
+            match salvar_resultados_zip(&resultados, &path) {
+                Ok(_) => {
+                    app.set_status_texto(
+                        format!("{} imagem(ns) exportada(s) em {:?}", resultados.len(), path)
+                            .into(),
+                    );
+                    app.set_status_cor(COR_SUCESSO);
+                }
+                Err(e) => {
+                    app.set_status_texto(format!("Erro ao exportar ZIP: {}", e).into());
+                    app.set_status_cor(COR_ERRO);
+                }
+            }
         }
     });
 
-    app.window().set_fullscreen(true);
-    app.run()
+    app.run()?;
+    Ok(())
 }
 
-fn converter_para_slint(din_img: &image::DynamicImage) -> Image {
-    let rgba = din_img.to_rgba8();
-    let width = rgba.width();
-    let height = rgba.height();
+/// Compacta todos os resultados atuais num único .zip.
+/// Requer o crate `zip` no Cargo.toml (veja instruções na conversa).
+fn salvar_resultados_zip(
+    resultados: &[(DynamicImage, String)],
+    path: &std::path::Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::Write;
+    use zip::write::FileOptions;
 
-    let mut buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(width, height);
+    let file = std::fs::File::create(path)?;
+    let mut zip = zip::ZipWriter::new(file);
+    let options: FileOptions<()> =
+        FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
-    for (src, dest) in rgba.pixels().zip(buffer.make_mut_slice().iter_mut()) {
-        *dest = slint::Rgba8Pixel {
-            r: src[0],
-            g: src[1],
-            b: src[2],
-            a: src[3],
-        };
+    for (i, (img, nome)) in resultados.iter().enumerate() {
+        let mut buffer = std::io::Cursor::new(Vec::new());
+        img.write_to(&mut buffer, image::ImageFormat::Png)?;
+
+        let nome_arquivo = format!("{:02}_{}.png", i + 1, nome);
+        zip.start_file(nome_arquivo, options)?;
+        zip.write_all(buffer.get_ref())?;
     }
 
-    Image::from_rgba8(buffer)
-}
-
-fn aplicar_algoritmo_pdi(
-    filtro: &str,
-    img: image::DynamicImage,
-) -> Vec<(image::DynamicImage, String)> {
-    match filtro {
-        "Decomposição RGB" => processos::decomposicao_rgb(img),
-        "Decomposição HSV" => processos::decomposicao_hsv(img),
-        "Limiarização" => processos::limiarizacao(img, 15),
-        "Transf. Logarítmica" => vec![(img, "Expansão de Tons Escuros (Log)".to_string())],
-        "Transf. de Potência (Gamma)" => vec![(img, "Correção Gamma".to_string())],
-        "Equalização de Histograma" => vec![(img, "Histograma Uniformizado".to_string())],
-        "Fatiamento por Intensidade" => vec![(img, "Destaque de Faixa de Níveis".to_string())],
-        "Filtro de Média Gaussiana" => vec![(img, "Suavização Gaussiana".to_string())],
-        "Filtro de Mediana" => vec![(img, "Filtro de Mediana (Redução de Ruído)".to_string())],
-        "Filtro de Mínimo" => vec![(img, "Filtro de Mínimo (Erosão)".to_string())],
-        "Filtro de Máximo" => vec![(img, "Filtro de Máximo (Dilatação)".to_string())],
-        "Máscara de Aguçamento" => vec![(img, "Unsharp Masking (High-Boost)".to_string())],
-        "Realce por Laplaciano" => vec![(img, "Bordas Laplacianas Somadas".to_string())],
-        "Gradiente de Sobel" => vec![(img, "Magnitude do Gradiente de Sobel".to_string())],
-        "Passa-Baixa Gaussiano" => vec![(img, "Frequências Altas Atenuadas (Suave)".to_string())],
-        "Passa-Alta Gaussiano" => vec![(img, "Frequências Baixas Atenuadas (Bordas)".to_string())],
-        "Passa-Baixa Butterworth" => vec![(img, "Filtro Butterworth Passa-Baixa".to_string())],
-        "Passa-Alta Butterworth" => vec![(img, "Filtro Butterworth Passa-Alta".to_string())],
-        "Filtro Adaptativo de Mediana" => vec![(img, "Filtro de Mediana Adaptativo".to_string())],
-        "Ruído Aditivo Gaussiano" => {
-            vec![(img, "Imagem Contaminada com Ruído Gaussiano".to_string())]
-        }
-        "Ruído Sal" => vec![(img, "Ruído Impulsivo Branco (Sal)".to_string())],
-        "Ruído Pimenta" => vec![(img, "Ruído Impulsivo Preto (Pimenta)".to_string())],
-        "Ruído Sal e Pimenta" => vec![(img, "Ruído Bipolar (Sal e Pimenta)".to_string())],
-        _ => {
-            println!("Algoritmo não implementado ou desconhecido: {}", filtro);
-            vec![(img, "Saída Sem Processamento".to_string())]
-        }
-    }
+    zip.finish()?;
+    Ok(())
 }
