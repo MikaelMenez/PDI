@@ -75,7 +75,9 @@ fn executar_processo(
             p.param_1.clamp(0.0, 255.0) as u8,
         )),
         "Transf. Logarítmica" => Some(processos::transformacao_log(img, p.param_1)),
-        "Transformação Potência" => Some(processos::transformacao_potencia(img, p.param_2)),
+        "Transformação Potência" => Some(processos::transformacao_de_intensidade_de_potencia(
+            img, p.param_2, p.param_1,
+        )),
 
         // Vá acrescentando aqui à medida que implementar em processos.rs, ex:
         // "Equalização de Histograma" => Some(processos::equalizacao_histograma(img)),

@@ -207,105 +207,6 @@ pub fn transformacao_log(img: DynamicImage, ganho: f32) -> Vec<(DynamicImage, St
     vec
 }
 
-/// Aplica a transformação de potência (Correção Gamma).
-/// Fórmula normalizada: s = 255 * (r / 255) ^ gamma
-pub fn transformacao_potencia(img: DynamicImage, gama: f32) -> Vec<(DynamicImage, String)> {
-    let (width, height) = img.dimensions();
-    let mut vec: Vec<(DynamicImage, String)> = Vec::with_capacity(8);
-
-    let mut cinza_base: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(width, height);
-    let mut cinza_gama_base: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(width, height);
-    let mut potencia_base: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(width, height);
-    let mut potencia_gama_base: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(width, height);
-
-    let mut cinza_olho: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(width, height);
-    let mut cinza_gama_olho: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(width, height);
-    let mut potencia_olho: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(width, height);
-    let mut potencia_gama_olho: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(width, height);
-
-    for pixel in img.pixels() {
-        let (x, y) = (pixel.0, pixel.1);
-        let rgb = pixel.2;
-
-        // --- Processamento Simples ---
-        let int_base_f32 = (rgb[0] as f32 + rgb[1] as f32 + rgb[2] as f32) / 3.0;
-        let int_base = int_base_f32 as u8;
-
-        let int_gama_base =
-            (255.0 * (int_base_f32 / 255.0).powf(1.0 / gama)).clamp(0.0, 255.0) as u8;
-        let int_potencia_base = (255.0 * (int_base_f32 / 255.0).powf(gama)).clamp(0.0, 255.0) as u8;
-        let int_potencia_gama_base =
-            (255.0 * ((int_gama_base as f32) / 255.0).powf(gama)).clamp(0.0, 255.0) as u8;
-
-        // --- Processamento Perceptual (Olho) ---
-        let int_olho_f32 = rgb[0] as f32 * 0.2126 + rgb[1] as f32 * 0.7152 + rgb[2] as f32 * 0.0722;
-        let int_olho = int_olho_f32 as u8;
-
-        let int_gama_olho =
-            (255.0 * (int_olho_f32 / 255.0).powf(1.0 / gama)).clamp(0.0, 255.0) as u8;
-        let int_potencia_olho = (255.0 * (int_olho_f32 / 255.0).powf(gama)).clamp(0.0, 255.0) as u8;
-        let int_potencia_gama_olho =
-            (255.0 * ((int_gama_olho as f32) / 255.0).powf(gama)).clamp(0.0, 255.0) as u8;
-
-        // Escrita nos Buffers Simples
-        *cinza_base.get_pixel_mut(x, y) = Rgb([int_base, int_base, int_base]);
-        *cinza_gama_base.get_pixel_mut(x, y) = Rgb([int_gama_base, int_gama_base, int_gama_base]);
-        *potencia_base.get_pixel_mut(x, y) =
-            Rgb([int_potencia_base, int_potencia_base, int_potencia_base]);
-        *potencia_gama_base.get_pixel_mut(x, y) = Rgb([
-            int_potencia_gama_base,
-            int_potencia_gama_base,
-            int_potencia_gama_base,
-        ]);
-
-        // Escrita nos Buffers Perceptuais
-        *cinza_olho.get_pixel_mut(x, y) = Rgb([int_olho, int_olho, int_olho]);
-        *cinza_gama_olho.get_pixel_mut(x, y) = Rgb([int_gama_olho, int_gama_olho, int_gama_olho]);
-        *potencia_olho.get_pixel_mut(x, y) =
-            Rgb([int_potencia_olho, int_potencia_olho, int_potencia_olho]);
-        *potencia_gama_olho.get_pixel_mut(x, y) = Rgb([
-            int_potencia_gama_olho,
-            int_potencia_gama_olho,
-            int_potencia_gama_olho,
-        ]);
-    }
-
-    vec.push((
-        cinza_base.into(),
-        "Imagem_Escala_De_Cinza_Simples".to_string(),
-    ));
-    vec.push((
-        cinza_gama_base.into(),
-        "Imagem_Gama_Inverso_Simples".to_string(),
-    ));
-    vec.push((
-        potencia_base.into(),
-        "Transformacao_Potencia_Simples".to_string(),
-    ));
-    vec.push((
-        potencia_gama_base.into(),
-        "Transformacao_Potencia_Gama_Simples".to_string(),
-    ));
-
-    vec.push((
-        cinza_olho.into(),
-        "Imagem_Escala_De_Cinza_Adaptada".to_string(),
-    ));
-    vec.push((
-        cinza_gama_olho.into(),
-        "Imagem_Gama_Inverso_Adaptada".to_string(),
-    ));
-    vec.push((
-        potencia_olho.into(),
-        "Transformacao_Potencia_Adaptada".to_string(),
-    ));
-    vec.push((
-        potencia_gama_olho.into(),
-        "Transformacao_Potencia_Gama_Adaptada".to_string(),
-    ));
-
-    vec
-}
 pub fn salva_decomposicao_rgb(
     imgs: Vec<ImageBuffer<Rgb<u8>, Vec<u8>>>,
     dir: String,
@@ -348,4 +249,25 @@ pub fn salva_decomposicao_rgb(
         "pseudoB.png"
     ))?;
     Ok(())
+}
+pub fn transformacao_de_intensidade_de_potencia(
+    img: DynamicImage,
+    gama: f32,
+    ganho: f32,
+) -> Vec<(DynamicImage, String)> {
+    let (width, height) = img.dimensions();
+    let mut vec: Vec<(DynamicImage, String)> = Vec::with_capacity(1);
+    let mut saida: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(width, height);
+    let transform = |x| (ganho * ((x as f32) / 255_f32).powf(gama)) as u8;
+    for pixel in img.pixels() {
+        let temp = saida.get_pixel_mut(pixel.0, pixel.1);
+        *temp = Rgb([
+            transform(pixel.2[0]),
+            transform(pixel.2[1]),
+            transform(pixel.2[2]),
+        ]);
+    }
+
+    vec.push((saida.into(), "Transformada de potência gama".to_owned()));
+    vec
 }

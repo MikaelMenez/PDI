@@ -10,7 +10,7 @@ image = "0.25"
 slint = "1.17.0"
 rfd = "0.17.2"
 zip = "1.1"
-tokio = { version = "1", features = ["full"] } # 👈 Garanta as features completas
+tokio = { version = "1", features = ["full"] }
 
 [build-dependencies]
 slint-build = "1.17.0"
