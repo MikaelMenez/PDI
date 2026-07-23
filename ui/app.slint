@@ -5,6 +5,10 @@ export struct ImagemSaida {
     imagem: image,
 }
 
+// Placeholder usado quando um filtro de vizinhança encontra uma posição
+// fora dos limites da imagem (bordas).
+export enum TipoPlaceholder { Minimo, MeioTermo, Maximo }
+
 // ============================================================================
 // COMPONENTES REUTILIZÁVEIS (só estilo — nenhuma lógica de negócio aqui)
 // ============================================================================
@@ -47,11 +51,13 @@ component Botao inherits Rectangle {
 component ItemLista inherits Rectangle {
     in property <string> rotulo;
     in property <bool> selecionado: false;
+    in property <bool> ativo: true;
     callback clicado();
 
     height: 38px;
     border-radius: 8px;
-    background: area.has-hover ? #313244 : (root.selecionado ? #313244 : transparent);
+    background: (area.has-hover && root.ativo) ? #313244 : (root.selecionado ? #313244 : transparent);
+    opacity: root.ativo ? 1.0 : 0.35;
     animate background { duration: 100ms; }
 
     HorizontalLayout {
@@ -73,9 +79,14 @@ component ItemLista inherits Rectangle {
             vertical-alignment: center;
             horizontal-stretch: 1;
         }
+
+        if !root.ativo: Text { text: "🔒"; font-size: 10px; color: #6c7086; vertical-alignment: center; }
     }
 
-    area := TouchArea { clicked => { root.clicado(); } }
+    area := TouchArea {
+        enabled: root.ativo;
+        clicked => { root.clicado(); }
+    }
 }
 
 component Cartao inherits Rectangle {
@@ -92,6 +103,33 @@ component TituloCampo inherits Text {
     color: #a6adc8;
     font-size: 11px;
     font-weight: 700;
+}
+
+component Chip inherits Rectangle {
+    in property <string> rotulo;
+    in property <bool> selecionado: false;
+    callback clicado();
+
+    height: 28px;
+    border-radius: 14px;
+    border-width: 1px;
+    border-color: root.selecionado ? #89b4fa : #45475a;
+    background: root.selecionado ? #89b4fa33 : (area.has-hover ? #313244 : transparent);
+    animate background { duration: 100ms; }
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        alignment: center;
+        Text {
+            text: root.rotulo;
+            color: root.selecionado ? #89b4fa : #a6adc8;
+            font-size: 11px;
+            font-weight: root.selecionado ? 700 : 400;
+        }
+    }
+
+    area := TouchArea { clicked => { root.clicado(); } }
 }
 
 // ============================================================================
@@ -118,6 +156,10 @@ export component AppWindow inherits Window {
 
     in-out property <string> nome_processo: "Nenhum";
 
+    // Setado pelo Rust logo após carregar a imagem (checando se todos os
+    // pixels têm R=G=B). Controla quais processos ficam disponíveis.
+    in-out property <bool> imagem-e-cinza: false;
+
     in-out property <float> param-1: 128.0;
     in-out property <float> param-2: 1.0;
     in-out property <int> param-kernel: 3;
@@ -130,6 +172,9 @@ export component AppWindow inherits Window {
     in-out property <float> intensidade-ruido: 25.0;
     in-out property <float> distribuicao-ruido: 0.5;
 
+    // Placeholder usado nas bordas pelos filtros de vizinhança
+    in-out property <TipoPlaceholder> placeholder-vizinhanca: TipoPlaceholder.MeioTermo;
+
     private property <[string]> filtros: [
         "Decomposição RGB", "Decomposição HSV", "Limiarização",
         "Transf. Logarítmica", "Transformação Potência",
@@ -141,6 +186,22 @@ export component AppWindow inherits Window {
         "Filtro Adaptativo de Mediana",
         "Ruído Aditivo Gaussiano", "Ruído Sal, Pimenta, Sal e Pimenta"
     ];
+
+    // Só fazem sentido em imagem colorida (decompor 3 canais de algo que já é 1 canal é vazio)
+    private property <bool> requer-colorida: false;
+    // Só fazem sentido em imagem em escala de cinza (nesse projeto, equalização é definida em 1 canal)
+    private property <bool> requer-cinza: false;
+
+    // Retorna se um processo está disponível dado o tipo de imagem carregada
+    pure function processo-disponivel(nome: string) -> bool {
+        if (root.imagem-e-cinza && (nome == "Decomposição RGB" || nome == "Decomposição HSV")) {
+            return false;
+        }
+        if (!root.imagem-e-cinza && nome == "Equalização de Histograma") {
+            return false;
+        }
+        return true;
+    }
 
     callback abrir-arquivo();
     callback salvar-atual();
@@ -162,7 +223,12 @@ export component AppWindow inherits Window {
                 alignment: center;
                 horizontal-stretch: 1;
                 Text { text: "Processador de Imagens Digitais"; font-size: 20px; font-weight: 800; color: #cdd6f4; }
-                Text { text: "UFPB · Introdução ao Processamento Digital de Imagens"; font-size: 12px; color: #6c7086; }
+                Text {
+                    text: "UFPB · Introdução ao Processamento Digital de Imagens" +
+                          (root.imagem-e-cinza ? "  ·  imagem em escala de cinza" : "");
+                    font-size: 12px;
+                    color: #6c7086;
+                }
             }
 
             Botao { rotulo: "Abrir Imagem"; icone: "📂"; cor-fundo: #89b4fa; cor-texto: #11111b; cor-borda: #89b4fa; clicado => { root.abrir-arquivo(); } }
@@ -191,9 +257,12 @@ export component AppWindow inherits Window {
                             for filtro[i] in root.filtros: ItemLista {
                                 rotulo: filtro;
                                 selecionado: root.nome_processo == filtro;
+                                ativo: root.processo-disponivel(filtro);
                                 clicado => {
-                                    root.nome_processo = filtro;
-                                    root.indice_selecionado = i;
+                                    if (root.processo-disponivel(filtro)) {
+                                        root.nome_processo = filtro;
+                                        root.indice_selecionado = i;
+                                    }
                                 }
                             }
                         }
@@ -207,7 +276,7 @@ export component AppWindow inherits Window {
                         cor-fundo: #a6e3a1;
                         cor-texto: #11111b;
                         cor-borda: #a6e3a1;
-                        ativo: root.nome_processo != "Nenhum" && root.nome_processo != "";
+                        ativo: root.nome_processo != "Nenhum" && root.nome_processo != "" && root.processo-disponivel(root.nome_processo);
                         clicado => { root.processar(); }
                     }
                 }
@@ -360,6 +429,34 @@ export component AppWindow inherits Window {
                                     width: 220px;
                                     TituloCampo { text: "DISTRIBUIÇÃO (PROBABILIDADE) · " + Math.round(root.distribuicao-ruido * 100) / 100; }
                                     Slider { minimum: 0; maximum: 1; value: root.distribuicao-ruido; changed(v) => { root.distribuicao-ruido = v; } }
+                                }
+
+                                // Placeholder de borda — só aparece nos filtros que visitam vizinhança
+                                if root.nome_processo == "Filtro de Média Gaussiana" || root.nome_processo == "Filtro de Mediana" ||
+                                   root.nome_processo == "Filtro de Mínimo" || root.nome_processo == "Filtro de Máximo" ||
+                                   root.nome_processo == "Máscara de Aguçamento" || root.nome_processo == "Realce por Laplaciano" ||
+                                   root.nome_processo == "Gradiente de Sobel" || root.nome_processo == "Filtro Adaptativo de Mediana":
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    TituloCampo { text: "BORDA (PLACEHOLDER)"; }
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        Chip {
+                                            rotulo: "Mínimo (0)";
+                                            selecionado: root.placeholder-vizinhanca == TipoPlaceholder.Minimo;
+                                            clicado => { root.placeholder-vizinhanca = TipoPlaceholder.Minimo; }
+                                        }
+                                        Chip {
+                                            rotulo: "Meio-termo (128)";
+                                            selecionado: root.placeholder-vizinhanca == TipoPlaceholder.MeioTermo;
+                                            clicado => { root.placeholder-vizinhanca = TipoPlaceholder.MeioTermo; }
+                                        }
+                                        Chip {
+                                            rotulo: "Máximo (255)";
+                                            selecionado: root.placeholder-vizinhanca == TipoPlaceholder.Maximo;
+                                            clicado => { root.placeholder-vizinhanca = TipoPlaceholder.Maximo; }
+                                        }
+                                    }
                                 }
                             }
                         }

@@ -271,3 +271,144 @@ pub fn transformacao_de_intensidade_de_potencia(
     vec.push((saida.into(), "Transformada de potência gama".to_owned()));
     vec
 }
+fn n_neighbors(tam: u8, x: u32, y: u32) -> Vec<(i64, i64)> {
+    let mut vec: Vec<(i64, i64)> = Vec::with_capacity(tam as usize * tam as usize);
+    let offset = (tam / 2) as i64;
+
+    for dy in -offset..=offset {
+        for dx in -offset..=offset {
+            let nx = (x as i64) + dx;
+            let ny = (y as i64) + dy;
+            vec.push((nx, ny));
+        }
+    }
+
+    vec
+}
+
+pub fn filtro_mediana(img: DynamicImage, tam: u8, placeholder: u8) -> Vec<(DynamicImage, String)> {
+    let median = |mut x: Vec<u8>| {
+        x.sort_unstable(); // sort_unstable é ligeiramente mais rápido
+        return x[x.len() / 2];
+    };
+    let (width, height) = img.dimensions();
+
+    let mut vec: Vec<(DynamicImage, String)> = Vec::with_capacity(1);
+    let mut saida: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(width, height);
+
+    let cap = (tam * tam) as usize;
+
+    for pixel in img.pixels() {
+        let temp = saida.get_pixel_mut(pixel.0, pixel.1);
+        let mut vecrtemp: Vec<u8> = Vec::with_capacity(cap);
+        let mut vecgtemp: Vec<u8> = Vec::with_capacity(cap);
+        let mut vecbtemp: Vec<u8> = Vec::with_capacity(cap);
+
+        let neighbors = n_neighbors(tam, pixel.0, pixel.1);
+
+        for neighbor in neighbors {
+            // CORRIGIDO: >= em vez de > para evitar estouro de limite
+            if neighbor.0 < 0
+                || neighbor.1 < 0
+                || neighbor.0 >= width as i64
+                || neighbor.1 >= height as i64
+            {
+                vecrtemp.push(placeholder);
+                vecgtemp.push(placeholder);
+                vecbtemp.push(placeholder);
+            } else {
+                let pixeltemp = img.get_pixel(neighbor.0 as u32, neighbor.1 as u32).0;
+                vecrtemp.push(pixeltemp[0]);
+                vecgtemp.push(pixeltemp[1]);
+                vecbtemp.push(pixeltemp[2]);
+            }
+        }
+        *temp = Rgb([median(vecrtemp), median(vecgtemp), median(vecbtemp)])
+    }
+    vec.push((DynamicImage::ImageRgb8(saida), "mediana".to_string()));
+    vec
+}
+
+pub fn filtro_min(img: DynamicImage, tam: u8, placeholder: u8) -> Vec<(DynamicImage, String)> {
+    let (width, height) = img.dimensions();
+
+    let mut vec: Vec<(DynamicImage, String)> = Vec::with_capacity(1);
+    let mut saida: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(width, height);
+
+    let cap = (tam * tam) as usize;
+
+    for pixel in img.pixels() {
+        let temp = saida.get_pixel_mut(pixel.0, pixel.1);
+        let mut vecrtemp: Vec<u8> = Vec::with_capacity(cap);
+        let mut vecgtemp: Vec<u8> = Vec::with_capacity(cap);
+        let mut vecbtemp: Vec<u8> = Vec::with_capacity(cap);
+
+        let neighbors = n_neighbors(tam, pixel.0, pixel.1);
+
+        for neighbor in neighbors {
+            if neighbor.0 < 0
+                || neighbor.1 < 0
+                || neighbor.0 >= width as i64
+                || neighbor.1 >= height as i64
+            {
+                vecrtemp.push(placeholder);
+                vecgtemp.push(placeholder);
+                vecbtemp.push(placeholder);
+            } else {
+                let pixeltemp = img.get_pixel(neighbor.0 as u32, neighbor.1 as u32).0;
+                vecrtemp.push(pixeltemp[0]);
+                vecgtemp.push(pixeltemp[1]);
+                vecbtemp.push(pixeltemp[2]);
+            }
+        }
+        *temp = Rgb([
+            *vecrtemp.iter().min().unwrap(),
+            *vecgtemp.iter().min().unwrap(),
+            *vecbtemp.iter().min().unwrap(),
+        ])
+    }
+    vec.push((DynamicImage::ImageRgb8(saida), "minimo".to_string()));
+    vec
+}
+
+pub fn filtro_max(img: DynamicImage, tam: u8, placeholder: u8) -> Vec<(DynamicImage, String)> {
+    let (width, height) = img.dimensions();
+
+    let mut vec: Vec<(DynamicImage, String)> = Vec::with_capacity(1);
+    let mut saida: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(width, height);
+
+    let cap = (tam * tam) as usize;
+
+    for pixel in img.pixels() {
+        let temp = saida.get_pixel_mut(pixel.0, pixel.1);
+        let mut vecrtemp: Vec<u8> = Vec::with_capacity(cap);
+        let mut vecgtemp: Vec<u8> = Vec::with_capacity(cap);
+        let mut vecbtemp: Vec<u8> = Vec::with_capacity(cap);
+
+        let neighbors = n_neighbors(tam, pixel.0, pixel.1);
+
+        for neighbor in neighbors {
+            if neighbor.0 < 0
+                || neighbor.1 < 0
+                || neighbor.0 >= width as i64
+                || neighbor.1 >= height as i64
+            {
+                vecrtemp.push(placeholder);
+                vecgtemp.push(placeholder);
+                vecbtemp.push(placeholder);
+            } else {
+                let pixeltemp = img.get_pixel(neighbor.0 as u32, neighbor.1 as u32).0;
+                vecrtemp.push(pixeltemp[0]);
+                vecgtemp.push(pixeltemp[1]);
+                vecbtemp.push(pixeltemp[2]);
+            }
+        }
+        *temp = Rgb([
+            *vecrtemp.iter().max().unwrap(),
+            *vecgtemp.iter().max().unwrap(),
+            *vecbtemp.iter().max().unwrap(),
+        ])
+    }
+    vec.push((DynamicImage::ImageRgb8(saida), "maximo".to_string()));
+    vec
+}

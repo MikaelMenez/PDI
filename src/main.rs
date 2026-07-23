@@ -26,6 +26,20 @@ pub struct Parametros {
     pub preservar_fundo: bool,
     pub intensidade_ruido: f32,
     pub distribuicao_ruido: f32,
+    /// Placeholder usado quando um filtro de vizinhança encontra uma
+    /// posição fora dos limites da imagem. `TipoPlaceholder` é o enum
+    /// gerado automaticamente a partir do .slint (Minimo / MeioTermo / Maximo).
+    pub placeholder: TipoPlaceholder,
+}
+
+/// Converte o placeholder escolhido na UI pro valor de intensidade (0-255)
+/// que a função de processamento efetivamente usa nas bordas.
+pub fn valor_placeholder(p: TipoPlaceholder) -> u8 {
+    match p {
+        TipoPlaceholder::Minimo => 0,
+        TipoPlaceholder::MeioTermo => 128,
+        TipoPlaceholder::Maximo => 255,
+    }
 }
 
 fn extrair_parametros(app: &AppWindow) -> Parametros {
@@ -41,6 +55,7 @@ fn extrair_parametros(app: &AppWindow) -> Parametros {
         preservar_fundo: app.get_preservar_fundo(),
         intensidade_ruido: app.get_intensidade_ruido(),
         distribuicao_ruido: app.get_distribuicao_ruido(),
+        placeholder: app.get_placeholder_vizinhanca(),
     }
 }
 
@@ -51,13 +66,21 @@ fn dynimg_para_slint(img: &DynamicImage) -> Image {
     Image::from_rgba8(SharedPixelBuffer::clone_from_slice(rgba.as_raw(), w, h))
 }
 
+/// Detecta se uma imagem é efetivamente em escala de cinza checando se
+/// R == G == B em todos os pixels. Usado pra travar/liberar processos na UI.
+fn imagem_e_cinza(img: &DynamicImage) -> bool {
+    let rgb = img.to_rgb8();
+    rgb.pixels().all(|p| p[0] == p[1] && p[1] == p[2])
+}
+
 /// ---------------------------------------------------------------------------
 /// TABELA DE PROCESSOS — o único lugar que muda quando você implementa algo novo
 /// ---------------------------------------------------------------------------
 /// Passo a passo pra adicionar um processo:
 ///   1. Escreva em processos.rs uma função com esta assinatura:
 ///        pub fn minha_funcao(img: DynamicImage, p: &Parametros) -> Vec<(DynamicImage, String)>
-///      (pode ignorar os campos de `p` que não usar)
+///      (pode ignorar os campos de `p` que não usar; para o placeholder de
+///      borda, use `crate::valor_placeholder(p.placeholder)` pra pegar 0/128/255)
 ///   2. Acrescente UMA linha abaixo, com o nome EXATO usado na lista
 ///      `filtros` do arquivo .slint.
 /// Conversão pra tela, galeria de resultados, imagem principal e status são
@@ -83,12 +106,24 @@ fn executar_processo(
         // "Equalização de Histograma" => Some(processos::equalizacao_histograma(img)),
         // "Fatiamento por Intensidade" => Some(processos::fatiamento_intensidade(img, p)),
         // "Filtro de Média Gaussiana" => Some(processos::filtro_media_gaussiana(img, p)),
-        // "Filtro de Mediana" => Some(processos::filtro_mediana(img, p)),
-        // "Filtro de Mínimo" => Some(processos::filtro_minimo(img, p)),
-        // "Filtro de Máximo" => Some(processos::filtro_maximo(img, p)),
+        "Filtro de Mediana" => Some(processos::filtro_mediana(
+            img,
+            p.kernel as u8,
+            valor_placeholder(p.placeholder),
+        )),
+        "Filtro de Mínimo" => Some(processos::filtro_min(
+            img,
+            p.kernel as u8,
+            valor_placeholder(p.placeholder),
+        )),
+        "Filtro de Máximo" => Some(processos::filtro_max(
+            img,
+            p.kernel as u8,
+            valor_placeholder(p.placeholder),
+        )),
         // "Máscara de Aguçamento" => Some(processos::mascara_de_agucamento(img, p)),
-        // "Realce por Laplaciano" => Some(processos::realce_laplaciano(img)),
-        // "Gradiente de Sobel" => Some(processos::gradiente_sobel(img)),
+        // "Realce por Laplaciano" => Some(processos::realce_laplaciano(img, p)),
+        // "Gradiente de Sobel" => Some(processos::gradiente_sobel(img, p)),
         // "Passa-Baixa Gaussiano" => Some(processos::passa_baixa_gaussiano(img, p)),
         // "Passa-Alta Gaussiano" => Some(processos::passa_alta_gaussiano(img, p)),
         // "Passa-Baixa Butterworth" => Some(processos::passa_baixa_butterworth(img, p)),
@@ -135,6 +170,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     app.set_img_entrada(dynimg_para_slint(&dyn_img));
                     app.set_img_saida(Image::default());
                     app.set_indice_saida_selecionada(-1);
+                    app.set_imagem_e_cinza(imagem_e_cinza(&dyn_img));
+
+                    // Se o processo selecionado deixou de estar disponível
+                    // pro tipo de imagem recém-carregada, limpa a seleção.
+                    let nome_atual = app.get_nome_processo();
+                    let bloqueado_rgb_hsv = app.get_imagem_e_cinza()
+                        && (nome_atual == "Decomposição RGB" || nome_atual == "Decomposição HSV");
+                    let bloqueado_equalizacao =
+                        !app.get_imagem_e_cinza() && nome_atual == "Equalização de Histograma";
+                    if bloqueado_rgb_hsv || bloqueado_equalizacao {
+                        app.set_nome_processo("Nenhum".into());
+                    }
+
                     *imagem_entrada_abrir.borrow_mut() = Some(dyn_img);
 
                     app.set_status_texto(
