@@ -44,6 +44,7 @@ component Botao inherits Rectangle {
 
     area := TouchArea {
         enabled: root.ativo;
+        mouse-cursor: root.ativo ? pointer : not-allowed;
         clicked => { root.clicado(); }
     }
 }
@@ -85,6 +86,7 @@ component ItemLista inherits Rectangle {
 
     area := TouchArea {
         enabled: root.ativo;
+        mouse-cursor: root.ativo ? pointer : not-allowed;
         clicked => { root.clicado(); }
     }
 }
@@ -129,7 +131,67 @@ component Chip inherits Rectangle {
         }
     }
 
-    area := TouchArea { clicked => { root.clicado(); } }
+    area := TouchArea { mouse-cursor: pointer; clicked => { root.clicado(); } }
+}
+
+// Seletor numérico só com botões — nunca existe campo de texto editável,
+// então não tem como o usuário digitar nada (par ou ímpar).
+component SeletorInteiro inherits Rectangle {
+    in property <int> valor;
+    in property <int> minimo: 1;
+    in property <int> maximo: 99;
+    in property <int> passo: 2;
+    callback mudou(int);
+
+    height: 34px;
+    width: 140px;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: #45475a;
+    background: #11111b;
+
+    HorizontalLayout {
+        padding: 3px;
+        spacing: 3px;
+
+        Rectangle {
+            width: 28px;
+            border-radius: 6px;
+            background: btn-menos.has-hover ? #313244 : transparent;
+            animate background { duration: 100ms; }
+            Text { text: "–"; color: #cdd6f4; font-size: 15px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+            btn-menos := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.mudou(Math.max(root.valor - root.passo, root.minimo)); }
+            }
+        }
+
+        Rectangle {
+            horizontal-stretch: 1;
+            Text {
+                text: root.valor;
+                color: #cdd6f4;
+                font-size: 13px;
+                font-weight: 700;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                width: 100%;
+                height: 100%;
+            }
+        }
+
+        Rectangle {
+            width: 28px;
+            border-radius: 6px;
+            background: btn-mais.has-hover ? #313244 : transparent;
+            animate background { duration: 100ms; }
+            Text { text: "+"; color: #cdd6f4; font-size: 15px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+            btn-mais := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.mudou(Math.min(root.valor + root.passo, root.maximo)); }
+            }
+        }
+    }
 }
 
 // ============================================================================
@@ -350,15 +412,15 @@ export component AppWindow inherits Window {
                                    root.nome_processo == "Máscara de Aguçamento":
                                 VerticalLayout {
                                     spacing: 4px;
-                                    TituloCampo { text: "JANELA (KERNEL)"; }
-                                    SpinBox { value: root.param-kernel; minimum: 1; maximum: 99; edited(v) => { root.param-kernel = v; } }
+                                    TituloCampo { text: "JANELA (KERNEL) · ímpar"; }
+                                    SeletorInteiro { valor: root.param-kernel; minimo: 1; maximo: 99; passo: 2; mudou(v) => { root.param-kernel = v; } }
                                 }
 
                                 if root.nome_processo == "Filtro Adaptativo de Mediana":
                                 VerticalLayout {
                                     spacing: 4px;
-                                    TituloCampo { text: "JANELA MÁXIMA"; }
-                                    SpinBox { value: root.param-kernel; minimum: 3; maximum: 99; edited(v) => { root.param-kernel = v; } }
+                                    TituloCampo { text: "JANELA MÁXIMA · ímpar"; }
+                                    SeletorInteiro { valor: root.param-kernel; minimo: 3; maximo: 99; passo: 2; mudou(v) => { root.param-kernel = v; } }
                                 }
 
                                 if root.nome_processo == "Filtro de Média Gaussiana":
@@ -492,7 +554,7 @@ export component AppWindow inherits Window {
                                     clip: true;
                                     animate background { duration: 100ms; }
 
-                                    item-area := TouchArea { clicked => { root.selecionar-saida(i); } }
+                                    item-area := TouchArea { mouse-cursor: pointer; clicked => { root.selecionar-saida(i); } }
 
                                     VerticalLayout {
                                         padding: 8px;
