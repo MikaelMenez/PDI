@@ -1,8 +1,5 @@
 use image::*;
 use std::error::Error;
-use image::{DynamicImage, ImageBuffer, Luma};
-use rustfft::{num_complex::Complex, FftPlanner};
-use rand::Rng;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Hsv {
@@ -650,14 +647,86 @@ pub fn agucamento_laplaciano(img: DynamicImage, ganho: f32) -> Vec<(DynamicImage
 
     vec.push((DynamicImage::ImageRgb8(filtro_4v), "Filtro Laplaciano de 4vizinhancas".to_string()));
     vec.push((DynamicImage::ImageRgb8(saida_4v), "Agucamento Laplaciano de 4vizinhancas".to_string()));
-    
+
     vec.push((DynamicImage::ImageRgb8(filtro_8v), "Filtro Laplaciano de 8vizinhancas".to_string()));
     vec.push((DynamicImage::ImageRgb8(saida_8v), "Agucamento Laplaciano de 8vizinhancas".to_string()));
 
     vec
 }
 
+pub fn agucamento_sobel(img: DynamicImage, fator: f32) -> Vec<(DynamicImage, String)> {
+    let (width, height) = img.dimensions();
+    let mut vec: Vec<(DynamicImage, String)> = Vec::with_capacity(1);
 
+    let img_gray = img.to_luma8();
+    let mut saida: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(width, height);
+    let mut filtro: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(width, height);
+
+    // Kernels de Sobel
+    let sobel_x = [
+        [-1.0, 0.0, 1.0],
+        [-2.0, 0.0, 2.0],
+        [-1.0, 0.0, 1.0]
+    ];
+
+    let sobel_y = [
+        [-1.0, -2.0, -1.0],
+        [0.0,  0.0,  0.0],
+        [1.0,  2.0,  1.0]
+    ];
+
+    let mut gradiente = vec![vec![0.0f32; width as usize]; height as usize];
+    let mut max_gradiente = 0.0f32;
+
+    for y in 1..height-1 {
+        for x in 1..width-1 {
+            let mut gx = 0.0f32;
+            let mut gy = 0.0f32;
+
+            // Aplica os nucleos de Sobel
+            for ky in 0..3 {
+                for kx in 0..3 {
+                    let px = x as i32 + (kx as i32 - 1);
+                    let py = y as i32 + (ky as i32 - 1);
+
+                    let pixel = img_gray.get_pixel(px as u32, py as u32);
+                    let valor = pixel[0] as f32;
+
+                    gx += valor * sobel_x[ky as usize][kx as usize];
+                    gy += valor * sobel_y[ky as usize][kx as usize];
+                }
+            }
+
+            // Magnitude do gradiente
+            let magnitude = (gx * gx + gy * gy).sqrt();
+            gradiente[y as usize][x as usize] = magnitude;
+
+            if magnitude > max_gradiente {
+                max_gradiente = magnitude;
+            }
+        }
+    }
+
+    for y in 0..height {
+        for x in 0..width {
+            let original = img_gray.get_pixel(x, y)[0] as f32;
+
+            // Normalizar gradiente para [0, 1]
+            let grad_norm = if max_gradiente > 0.0 { gradiente[y as usize][x as usize] / max_gradiente } else { 0.0 };
+
+            // Aguçamento: original + fator * gradiente
+            let novo_valor = (original + fator * grad_norm * 255.0).clamp(0.0, 255.0) as u8;
+            saida.put_pixel(x, y, Rgb([novo_valor, novo_valor, novo_valor]));
+            
+            filtro.put_pixel(x, y, Rgb([grad_norm as u8, grad_norm as u8, grad_norm as u8]));
+        }
+    }
+
+    vec.push((DynamicImage::ImageRgb8(saida), "Imagem com aguçamento por gradiente de Sobel".to_string()));
+    vec.push((DynamicImage::ImageRgb8(filtro), "Filtro de aguçamento por gradiente de Sobel".to_string()));
+
+    vec
+}
 
 
 
