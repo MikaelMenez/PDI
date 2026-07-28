@@ -1,6 +1,7 @@
 use image::*;
 use std::error::Error;
 
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Hsv {
     pub h: f32, // Matiz (Hue)
@@ -406,6 +407,7 @@ pub fn equalizacao_histograma(img: DynamicImage, ganho: f32) -> Vec<(DynamicImag
 
     let mut vec: Vec<(DynamicImage, String)> = Vec::with_capacity(1);
     let mut saida: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(width, height);
+    let mut saida_hist: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(width, height);
     let mut histograma = [0u32; 256];
 
     //Preenche histograma
@@ -433,7 +435,9 @@ pub fn equalizacao_histograma(img: DynamicImage, ganho: f32) -> Vec<(DynamicImag
     for (x, y, pixel) in img_gray.enumerate_pixels() {
         let novo_valor = mapeamento[pixel[0] as usize];
         saida.put_pixel(x, y, Rgb([novo_valor, novo_valor, novo_valor]));
+        saida_hist.put_pixel(x, y, Rgb([novo_valor, novo_valor, novo_valor]));
     }
+    gerar_histogramas(&img, &DynamicImage::ImageRgb8(saida_hist));
 
     vec.push((DynamicImage::ImageRgb8(saida), "Equalização de Histograma".to_string()));
 
@@ -717,7 +721,7 @@ pub fn agucamento_sobel(img: DynamicImage, fator: f32) -> Vec<(DynamicImage, Str
             // Aguçamento: original + fator * gradiente
             let novo_valor = (original + fator * grad_norm * 255.0).clamp(0.0, 255.0) as u8;
             saida.put_pixel(x, y, Rgb([novo_valor, novo_valor, novo_valor]));
-            
+
             filtro.put_pixel(x, y, Rgb([grad_norm as u8, grad_norm as u8, grad_norm as u8]));
         }
     }
@@ -730,4 +734,158 @@ pub fn agucamento_sobel(img: DynamicImage, fator: f32) -> Vec<(DynamicImage, Str
 
 
 
+
+
+// VVV plota e salva os histogramas
+pub fn gerar_histogramas(img: &DynamicImage, img_equalizada: &DynamicImage) -> Vec<(DynamicImage, String)> {
+    let mut vec: Vec<(DynamicImage, String)> = Vec::with_capacity(2);
+
+    // Converter para escala de cinza
+    let img_gray = img.to_luma8();
+    let img_eq_gray = img_equalizada.to_luma8();
+
+    // Calcular histograma original
+    let mut hist_original = [0u32; 256];
+    for pixel in img_gray.pixels() {
+        hist_original[pixel[0] as usize] += 1;
+    }
+
+    // Calcular histograma equalizado
+    let mut hist_equalizado = [0u32; 256];
+    for pixel in img_eq_gray.pixels() {
+        hist_equalizado[pixel[0] as usize] += 1;
+    }
+
+    // Gerar imagem do histograma original
+    let hist_orig_img = criar_imagem_histograma(&hist_original, "Histograma Original");
+    vec.push((DynamicImage::ImageRgb8(hist_orig_img), "Histograma Original".to_string()));
+
+    // Gerar imagem do histograma equalizado
+    let hist_eq_img = criar_imagem_histograma(&hist_equalizado, "Histograma Equalizado");
+    vec.push((DynamicImage::ImageRgb8(hist_eq_img), "Histograma Equalizado".to_string()));
+
+    vec
+}
+
+fn criar_imagem_histograma(histograma: &[u32; 256], titulo: &str) -> ImageBuffer<Rgb<u8>, Vec<u8>> {
+    // Dimensões do gráfico
+    const LARGURA: u32 = 512;
+    const ALTURA: u32 = 400;
+    const MARGEM: u32 = 40;
+    const ALTURA_GRAFICO: u32 = ALTURA - 2 * MARGEM;
+    const LARGURA_GRAFICO: u32 = LARGURA - 2 * MARGEM;
+
+    let mut saida: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(LARGURA, ALTURA);
+
+    // Preencher fundo com branco
+    for y in 0..ALTURA {
+        for x in 0..LARGURA {
+            saida.put_pixel(x, y, Rgb([255, 255, 255]));
+        }
+    }
+
+    // Encontrar o valor máximo do histograma
+    let max_valor = *histograma.iter().max().unwrap_or(&1) as f32;
+
+    // Desenhar eixos
+    desenhar_eixos(&mut saida, LARGURA, ALTURA, MARGEM);
+
+    // Desenhar barras do histograma
+    let largura_barra = LARGURA_GRAFICO / 256;
+
+    for i in 0..256 {
+        let valor = histograma[i] as f32;
+        let altura_barra = if max_valor > 0.0 {
+            (valor / max_valor) * ALTURA_GRAFICO as f32
+        } else {
+            0.0
+        };
+
+        let x_inicio = MARGEM + (i as u32 * largura_barra);
+        let y_inicio = MARGEM + ALTURA_GRAFICO - altura_barra as u32;
+        let y_fim = MARGEM + ALTURA_GRAFICO;
+
+        // Desenhar barra
+        for y in y_inicio..y_fim {
+            for x in x_inicio..(x_inicio + largura_barra) {
+                if x < LARGURA && y < ALTURA {
+                    // Cor azul para histograma
+                    saida.put_pixel(x, y, Rgb([0, 0, 255]));
+                }
+            }
+        }
+    }
+
+    // Desenhar título (simplificado - usando pixels)
+    desenhar_texto_simples(&mut saida, titulo, 10, 10);
+
+    // Desenhar rótulos dos eixos
+    desenhar_texto_simples(&mut saida, "Intensidade (0-255)", LARGURA/2 - 60, ALTURA - 10);
+    desenhar_texto_simples(&mut saida, "Frequência", 10, ALTURA/2);
+
+    // Desenhar marcas nos eixos
+    for i in (0..256).step_by(32) {
+        let x = MARGEM + (i as u32 * largura_barra);
+        // Desenhar pequena linha no eixo X
+        for dy in 0..5 {
+            saida.put_pixel(x, MARGEM + ALTURA_GRAFICO + dy, Rgb([0, 0, 0]));
+        }
+        // Escrever valor (apenas alguns)
+        if i % 64 == 0 {
+            let texto = format!("{}", i);
+            desenhar_texto_simples(&mut saida, &texto, x - 10, MARGEM + ALTURA_GRAFICO + 10);
+        }
+    }
+
+    saida
+}
+
+fn desenhar_eixos(saida: &mut ImageBuffer<Rgb<u8>, Vec<u8>>, largura: u32, altura: u32, margem: u32) {
+    // Eixo X (horizontal)
+    for x in margem..(largura - margem) {
+        let y = margem + (altura - 2 * margem);
+        saida.put_pixel(x, y, Rgb([0, 0, 0]));
+    }
+
+    // Eixo Y (vertical)
+    for y in margem..(altura - margem) {
+        let x = margem;
+        saida.put_pixel(x, y, Rgb([0, 0, 0]));
+    }
+
+    // Setas dos eixos
+    // Seta X
+    for i in 0..10 {
+        saida.put_pixel(largura - margem - i, altura - margem - i, Rgb([0, 0, 0]));
+        saida.put_pixel(largura - margem - i, altura - margem + i, Rgb([0, 0, 0]));
+    }
+
+    // Seta Y
+    for i in 0..10 {
+        saida.put_pixel(margem + i, margem + i, Rgb([0, 0, 0]));
+        saida.put_pixel(margem - i, margem + i, Rgb([0, 0, 0]));
+    }
+}
+
+fn desenhar_texto_simples(saida: &mut ImageBuffer<Rgb<u8>, Vec<u8>>, texto: &str, x: u32, y: u32) {
+    // Implementação simples de texto usando uma fonte bitmap básica
+    // Esta é uma versão muito simplificada - idealmente usaríamos uma biblioteca de fontes
+
+    let chars = texto.chars().collect::<Vec<char>>();
+    let mut offset_x = 0;
+
+    for c in chars {
+        // Desenhar caractere como um bloco simples (apenas para demonstração)
+        // Na prática, você usaria uma biblioteca como `rusttype` ou `fontdue`
+        for dy in 0..8 {
+            for dx in 0..6 {
+                if x + offset_x + dx < saida.width() && y + dy < saida.height() {
+                    // Desenhar pixel preto
+                    saida.put_pixel(x + offset_x + dx, y + dy, Rgb([0, 0, 0]));
+                }
+            }
+        }
+        offset_x += 8;
+    }
+}
 
