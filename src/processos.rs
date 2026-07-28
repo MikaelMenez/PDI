@@ -463,26 +463,29 @@ pub fn fatiamento_intensidade(img: DynamicImage, fLow: u8, fHigh: u8, fundo: boo
 pub fn media_gaussiana(img: DynamicImage, sigma: f32) -> Vec<(DynamicImage, String)> {
     let (width, height) = img.dimensions();
     let mut vec: Vec<(DynamicImage, String)> = Vec::with_capacity(1);
+
+    // ADICIONADO: Converter para escala de cinza
+    let img_gray = img.to_luma8();
     let mut saida: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(width, height);
 
     let mut nucleo = vec![vec![0.0f32; 3]; 3];
     let mut soma_nucleo = 0.0f32;
     let raio = (3 / 2);
 
-    //Distribuição Gaussiana no nucleo
+    // Distribuição Gaussiana no nucleo
     for i in 0..3 {
         for j in 0..3 {
             let x = (i as i32 - raio) as f32;
             let y = (j as i32 - raio) as f32;
 
-            //G(x,y) = (1/(2*PI*sigma^2)) * exp(-(x^2 + y^2)/(2*sigma^2))
+            // G(x,y) = (1/(2*PI*sigma^2)) * exp(-(x^2 + y^2)/(2*sigma^2))
             nucleo[i][j] = (1.0 / (2.0 * std::f32::consts::PI * sigma * sigma)) * (-(x*x + y*y) / (2.0 * sigma * sigma)).exp();
 
             soma_nucleo += nucleo[i][j];
         }
     }
 
-    //Normalização do nucleo
+    // Normalização do nucleo
     for i in 0..3 {
         for j in 0..3 {
             nucleo[i][j] /= soma_nucleo;
@@ -491,17 +494,15 @@ pub fn media_gaussiana(img: DynamicImage, sigma: f32) -> Vec<(DynamicImage, Stri
 
     for y in 0..height {
         for x in 0..width {
-            let mut soma_r = 0.0f32;
-            let mut soma_g = 0.0f32;
-            let mut soma_b = 0.0f32;
+            let mut soma = 0.0f32;
 
-            //Percorrer a vizinhança do pixel
+            // Percorrer a vizinhança do pixel
             for ky in 0..3 {
                 for kx in 0..3 {
                     let px = x as i32 + (kx as i32 - raio);
                     let py = y as i32 + (ky as i32 - raio);
 
-                    //Tratamento de bordas (espelhamento)
+                    // Tratamento de bordas (espelhamento)
                     let px_clamp = if px < 0 { -px }
                     else if px >= width as i32 { 2 * (width as i32) - px - 2 }
                     else { px };
@@ -509,16 +510,14 @@ pub fn media_gaussiana(img: DynamicImage, sigma: f32) -> Vec<(DynamicImage, Stri
                     else if py >= height as i32 { 2 * (height as i32) - py - 2 }
                     else { py };
 
-                    let pixel = img.get_pixel(px_clamp as u32, py_clamp as u32);
+                    let pixel = img_gray.get_pixel(px_clamp as u32, py_clamp as u32);
                     let peso = nucleo[ky][kx];
 
-                    soma_r += pixel[0] as f32 * peso;
-                    soma_g += pixel[1] as f32 * peso;
-                    soma_b += pixel[2] as f32 * peso;
+                    soma += pixel[0] as f32 * peso;
                 }
             }
 
-            saida.put_pixel(x, y, Rgb([soma_r.round() as u8, soma_g.round() as u8, soma_b.round() as u8]));
+            saida.put_pixel(x, y, Rgb([soma.round() as u8, soma.round() as u8, soma.round() as u8]));
         }
     }
 
@@ -529,6 +528,7 @@ pub fn media_gaussiana(img: DynamicImage, sigma: f32) -> Vec<(DynamicImage, Stri
 
 pub fn filtro_agucamento(img: DynamicImage, ganho: f32) -> Vec<(DynamicImage, String)> {
     let (width, height) = img.dimensions();
+    let img_gray = img.to_luma8();
 
     let mut vec: Vec<(DynamicImage, String)> = Vec::with_capacity(1);
     let mut saida: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(width, height);
@@ -542,9 +542,7 @@ pub fn filtro_agucamento(img: DynamicImage, ganho: f32) -> Vec<(DynamicImage, St
 
     for y in 0..height {
         for x in 0..width {
-            let mut soma_r = 0.0f32;
-            let mut soma_g = 0.0f32;
-            let mut soma_b = 0.0f32;
+            let mut soma = 0.0f32;
 
             //Percorrer a vizinhança do pixel
             for ky in 0..3 {
@@ -560,21 +558,17 @@ pub fn filtro_agucamento(img: DynamicImage, ganho: f32) -> Vec<(DynamicImage, St
                     else if py >= height as i32 { 2 * (height as i32) - py - 2 }
                     else { py };
 
-                    let pixel = img.get_pixel(px_clamp as u32, py_clamp as u32);
+                    let pixel = img_gray.get_pixel(px_clamp as u32, py_clamp as u32);
                     let peso = nucleo[ky][kx];
 
-                    soma_r += pixel[0] as f32 * peso;
-                    soma_g += pixel[1] as f32 * peso;
-                    soma_b += pixel[2] as f32 * peso;
+                    soma += pixel[0] as f32 * peso;
                 }
             }
 
-            let pixel = img.get_pixel(x, y);
-            let novo_r = (pixel[0] as f32 + ganho * soma_r).clamp(0.0, 255.0) as u8;
-            let novo_g = (pixel[1] as f32 + ganho * soma_g).clamp(0.0, 255.0) as u8;
-            let novo_b = (pixel[2] as f32 + ganho * soma_b).clamp(0.0, 255.0) as u8;
+            let pixel = img_gray.get_pixel(x, y);
+            let novo = (pixel[0] as f32 + ganho * soma).clamp(0.0, 255.0) as u8;
 
-            saida.put_pixel(x, y, Rgb([novo_r, novo_g, novo_b]));
+            saida.put_pixel(x, y, Rgb([novo, novo, novo]));
 
         }
     }
@@ -584,7 +578,81 @@ pub fn filtro_agucamento(img: DynamicImage, ganho: f32) -> Vec<(DynamicImage, St
     vec
     }
 
+pub fn agucamento_laplaciano(img: DynamicImage, ganho: f32) -> Vec<(DynamicImage, String)> {
+    let (width, height) = img.dimensions();
+    let img_gray = img.to_luma8();
 
+    let mut vec: Vec<(DynamicImage, String)> = Vec::with_capacity(1);
+    let mut saida_4v: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(width, height);
+    let mut filtro_4v: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(width, height);
+    let mut saida_8v: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(width, height);
+    let mut filtro_8v: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(width, height);
+
+    //Nucleo de ganho ajustável
+    let nucleo_4v: [[f32; 3]; 3] = [
+        [0.0, -1.0,  0.0],
+        [-1.0, 4.0, -1.0],
+        [0.0, -1.0,  0.0]
+    ];
+    let nucleo_8v: [[f32; 3]; 3] = [
+        [-1.0, -1.0, -1.0],
+        [-1.0,  8.0, -1.0],
+        [-1.0, -1.0, -1.0]
+    ];
+
+    for y in 0..height {
+        for x in 0..width {
+            let mut soma_4v = 0.0f32;
+
+            let mut soma_8v = 0.0f32;
+
+            //Percorrer a vizinhança do pixel
+            for ky in 0..3 {
+                for kx in 0..3 {
+                    let px = x as i32 + (kx as i32 - 1);
+                    let py = y as i32 + (ky as i32 - 1);
+
+                    //Tratamento de bordas (espelhamento)
+                    let px_clamp = if px < 0 { -px }
+                    else if px >= width as i32 { 2 * (width as i32) - px - 2 }
+                    else { px };
+                    let py_clamp = if py < 0 { -py }
+                    else if py >= height as i32 { 2 * (height as i32) - py - 2 }
+                    else { py };
+
+                    let pixel = img_gray.get_pixel(px_clamp as u32, py_clamp as u32);
+                    let peso_4v = nucleo_4v[ky][kx];
+                    let peso_8v = nucleo_8v[ky][kx];
+
+                    soma_4v += pixel[0] as f32 * peso_4v;
+
+                    soma_8v += pixel[0] as f32 * peso_8v;
+                }
+            }
+
+            let pixel = img.get_pixel(x, y);
+
+            filtro_4v.put_pixel(x, y, Rgb([soma_4v.clamp(0.0, 255.0) as u8, soma_4v.clamp(0.0, 255.0) as u8, soma_4v.clamp(0.0, 255.0) as u8]));
+
+            let novo_4v = (pixel[0] as f32 + ganho * soma_4v).clamp(0.0, 255.0) as u8;
+            saida_4v.put_pixel(x, y, Rgb([novo_4v, novo_4v, novo_4v]));
+
+            filtro_8v.put_pixel(x, y, Rgb([soma_8v.clamp(0.0, 255.0) as u8, soma_8v.clamp(0.0, 255.0) as u8, soma_8v.clamp(0.0, 255.0) as u8]));
+
+            let novo_8v = (pixel[0] as f32 + ganho * soma_8v).clamp(0.0, 255.0) as u8;
+            saida_8v.put_pixel(x, y, Rgb([novo_8v, novo_8v, novo_8v]));
+
+        }
+    }
+
+    vec.push((DynamicImage::ImageRgb8(filtro_4v), "Filtro Laplaciano de 4vizinhancas".to_string()));
+    vec.push((DynamicImage::ImageRgb8(saida_4v), "Agucamento Laplaciano de 4vizinhancas".to_string()));
+    
+    vec.push((DynamicImage::ImageRgb8(filtro_8v), "Filtro Laplaciano de 8vizinhancas".to_string()));
+    vec.push((DynamicImage::ImageRgb8(saida_8v), "Agucamento Laplaciano de 8vizinhancas".to_string()));
+
+    vec
+}
 
 
 
