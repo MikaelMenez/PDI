@@ -185,23 +185,14 @@ pub fn transformacao_log(img: DynamicImage, ganho: f32) -> Vec<(DynamicImage, St
         *log2_olho.get_pixel_mut(x, y) = Rgb([int_log2_olho, int_log2_olho, int_log2_olho]);
     }
 
-    vec.push((
-        cinza_base.into(),
-        "Imagem_Escala_De_Cinza_Simples".to_string(),
-    ));
+    vec.push((cinza_base.into(), "Imagem_Escala_De_Cinza_Simples".to_string()));
     vec.push((ln_base.into(), "Transformacao_Ln_Simples".to_string()));
     vec.push((log10_base.into(), "Transformacao_Log10_Simples".to_string()));
     vec.push((log2_base.into(), "Transformacao_Log2_Simples".to_string()));
 
-    vec.push((
-        cinza_olho.into(),
-        "Imagem_Escala_De_Cinza_Adaptada".to_string(),
-    ));
+    vec.push((cinza_olho.into(), "Imagem_Escala_De_Cinza_Adaptada".to_string()));
     vec.push((ln_olho.into(), "Transformacao_Ln_Adaptada".to_string()));
-    vec.push((
-        log10_olho.into(),
-        "Transformacao_Log10_Adaptada".to_string(),
-    ));
+    vec.push((log10_olho.into(), "Transformacao_Log10_Adaptada".to_string()));
     vec.push((log2_olho.into(), "Transformacao_Log2_Adaptada".to_string()));
 
     vec
@@ -250,11 +241,7 @@ pub fn salva_decomposicao_rgb(
     ))?;
     Ok(())
 }
-pub fn transformacao_de_intensidade_de_potencia(
-    img: DynamicImage,
-    gama: f32,
-    ganho: f32,
-) -> Vec<(DynamicImage, String)> {
+pub fn transformacao_de_intensidade_de_potencia(img: DynamicImage, gama: f32, ganho: f32, ) -> Vec<(DynamicImage, String)> {
     let (width, height) = img.dimensions();
     let mut vec: Vec<(DynamicImage, String)> = Vec::with_capacity(1);
     let mut saida: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(width, height);
@@ -412,3 +399,44 @@ pub fn filtro_max(img: DynamicImage, tam: u8, placeholder: u8) -> Vec<(DynamicIm
     vec.push((DynamicImage::ImageRgb8(saida), "maximo".to_string()));
     vec
 }
+
+pub fn equalizacao_histograma(img: DynamicImage, ganho: f32) -> Vec<(DynamicImage, String)> {
+    let (width, height) = img.dimensions();
+    let img_gray = img.to_luma8();
+
+    let mut vec: Vec<(DynamicImage, String)> = Vec::with_capacity(1);
+    let mut saida: ImageBuffer<Luma<u8>, Vec<u8>> = ImageBuffer::new(width, height);
+    let mut histograma = [0u32; 256];
+
+    //Preenche histograma
+    for pixel in img_gray.pixels() {
+        histograma[pixel[0] as usize] += 1;
+    }
+
+    //Calcula histograma acumulado
+    let mut acumulado = [0u32; 256];
+    acumulado[0] = histograma[0];
+
+    for i in 1..256 {
+        acumulado[i] = acumulado[i-1] + histograma[i];
+    }
+
+    //Calcula a função de mapeamento
+    let total_pixels = (width * height) as f32;
+    let mut mapeamento = [0u8; 256];
+
+    for i in 0..256 {
+        mapeamento[i] = ((acumulado[i] as f32 / total_pixels) * 255.0 * ganho).round() as u8;
+    }
+
+    //Mapeamento do histograma
+    for (x, y, pixel) in img_gray.enumerate_pixels() {
+        let novo_valor = mapeamento[pixel[0] as usize];
+        saida.put_pixel(x, y, Luma([novo_valor]));
+    }
+    
+    vec.push((DynamicImage::ImageLuma8(saida), "Equalização de Histograma".to_string()));
+
+    vec
+}
+
