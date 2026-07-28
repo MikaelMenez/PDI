@@ -720,7 +720,24 @@ pub fn agucamento_sobel(img: DynamicImage, fator: f32) -> Vec<(DynamicImage, Str
             
             filtro.put_pixel(x, y, Rgb([grad_norm as u8, grad_norm as u8, grad_norm as u8]));
         }
-    }
+        _ => {
+            let gray = img.to_luma8();
+            let (width, height) = gray.dimensions();
+            let mut saida = ImageBuffer::new(width, height);
+
+            for (x, y, pixel) in gray.enumerate_pixels() {
+                let r1: f32 = rng.gen_range(0.0..1.0);
+                if r1 < probabilidade_total {
+                    let r2: f32 = rng.gen_range(0.0..1.0);
+                    let val = if r2 < proporcao_sal { 255u8 } else { 0u8 };
+                    saida.put_pixel(x, y, Luma([val]));
+                } else {
+                    saida.put_pixel(x, y, *pixel);
+                }
+            }
+            DynamicImage::ImageLuma8(saida)
+        }
+    };
 
     vec.push((DynamicImage::ImageRgb8(saida), "Imagem com aguçamento por gradiente de Sobel".to_string()));
     vec.push((DynamicImage::ImageRgb8(filtro), "Filtro de aguçamento por gradiente de Sobel".to_string()));
