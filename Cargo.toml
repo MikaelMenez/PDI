@@ -11,6 +11,8 @@ slint = "1.17.0"
 rfd = "0.17.2"
 zip = "1.1"
 tokio = { version = "1", features = ["full"] }
+rustfft = "6.1"
+rand = "0.8.5"
 
 [build-dependencies]
 slint-build = "1.17.0"
