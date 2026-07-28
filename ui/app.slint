@@ -447,6 +447,14 @@ export component AppWindow inherits Window {
                                     LineEdit { text: root.param-2; edited(v) => { root.param-2 = v.to-float(); } }
                                 }
 
+                                if root.nome_processo == "Máscara de Aguçamento" || root.nome_processo == "Realce por Laplaciano" || root.nome_processo == "Gradiente de Sobel":
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    width: 120px;
+                                    TituloCampo { text: "GANHO"; }
+                                    LineEdit { text: root.param-1; edited(v) => { root.param-1 = v.to-float(); } }
+                                }
+
                                 if root.nome_processo == "Fatiamento por Intensidade":
                                 VerticalLayout {
                                     spacing: 4px;
@@ -493,11 +501,14 @@ export component AppWindow inherits Window {
                                     Slider { minimum: 0; maximum: 1; value: root.distribuicao-ruido; changed(v) => { root.distribuicao-ruido = v; } }
                                 }
 
-                                // Placeholder de borda — só aparece nos filtros que visitam vizinhança
+                                // Placeholder de borda — só aparece nos filtros que de fato visitam
+                                // vizinhança fora dos limites da imagem. O adaptativo de mediana NÃO
+                                // usa placeholder (só conta vizinhos válidos dentro da imagem), por
+                                // isso não entra nessa lista.
                                 if root.nome_processo == "Filtro de Média Gaussiana" || root.nome_processo == "Filtro de Mediana" ||
                                    root.nome_processo == "Filtro de Mínimo" || root.nome_processo == "Filtro de Máximo" ||
                                    root.nome_processo == "Máscara de Aguçamento" || root.nome_processo == "Realce por Laplaciano" ||
-                                   root.nome_processo == "Gradiente de Sobel" || root.nome_processo == "Filtro Adaptativo de Mediana":
+                                   root.nome_processo == "Gradiente de Sobel":
                                 VerticalLayout {
                                     spacing: 4px;
                                     TituloCampo { text: "BORDA (PLACEHOLDER)"; }

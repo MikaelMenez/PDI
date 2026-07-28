@@ -76,15 +76,6 @@ fn imagem_e_cinza(img: &DynamicImage) -> bool {
 /// ---------------------------------------------------------------------------
 /// TABELA DE PROCESSOS — o único lugar que muda quando você implementa algo novo
 /// ---------------------------------------------------------------------------
-/// Passo a passo pra adicionar um processo:
-///   1. Escreva em processos.rs uma função com esta assinatura:
-///        pub fn minha_funcao(img: DynamicImage, p: &Parametros) -> Vec<(DynamicImage, String)>
-///      (pode ignorar os campos de `p` que não usar; para o placeholder de
-///      borda, use `crate::valor_placeholder(p.placeholder)` pra pegar 0/128/255)
-///   2. Acrescente UMA linha abaixo, com o nome EXATO usado na lista
-///      `filtros` do arquivo .slint.
-/// Conversão pra tela, galeria de resultados, imagem principal e status são
-/// tratados automaticamente — não precisa tocar em mais nada.
 fn executar_processo(
     nome: &str,
     img: DynamicImage,
@@ -102,10 +93,17 @@ fn executar_processo(
             img, p.param_2, p.param_1,
         )),
 
-        // Vá acrescentando aqui à medida que implementar em processos.rs, ex:
-        // "Equalização de Histograma" => Some(processos::equalizacao_histograma(img)),
-        // "Fatiamento por Intensidade" => Some(processos::fatiamento_intensidade(img, p)),
-        // "Filtro de Média Gaussiana" => Some(processos::filtro_media_gaussiana(img, p)),
+        "Equalização de Histograma" => Some(processos::equalizacao_histograma(img)),
+        "Fatiamento por Intensidade" => Some(processos::fatiamento_intensidade(
+            img,
+            p.faixa_a.clamp(0.0, 255.0) as u8,
+            p.faixa_b.clamp(0.0, 255.0) as u8,
+            p.preservar_fundo,
+        )),
+        "Filtro de Média Gaussiana" => Some(processos::media_gaussiana(img, p)),
+        "Máscara de Aguçamento" => Some(processos::filtro_agucamento(img, p)),
+        "Realce por Laplaciano" => Some(processos::agucamento_laplaciano(img, p)),
+        "Gradiente de Sobel" => Some(processos::agucamento_sobel(img, p)),
         "Filtro de Mediana" => Some(processos::filtro_mediana(
             img,
             p.kernel as u8,
@@ -121,9 +119,6 @@ fn executar_processo(
             p.kernel as u8,
             valor_placeholder(p.placeholder),
         )),
-        // "Máscara de Aguçamento" => Some(processos::mascara_de_agucamento(img, p)),
-        // "Realce por Laplaciano" => Some(processos::realce_laplaciano(img, p)),
-        // "Gradiente de Sobel" => Some(processos::gradiente_sobel(img, p)),
         "Passa-Baixa Gaussiano" => Some(processos::passa_baixa_gaussiano(img, p)),
         "Passa-Alta Gaussiano" => Some(processos::passa_alta_gaussiano(img, p)),
         "Passa-Baixa Butterworth" => Some(processos::passa_baixa_butterworth(img, p)),
@@ -141,18 +136,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let lista_saidas_model: Rc<VecModel<ImagemSaida>> = Rc::new(VecModel::default());
     app.set_lista_saidas(ModelRc::from(lista_saidas_model.clone()));
 
-    // Imagem original carregada — mantida fora do Slint pra poder reprocessar
-    // sempre que o usuário mudar parâmetros e apertar "Executar" de novo.
     let imagem_entrada: Rc<RefCell<Option<DynamicImage>>> = Rc::new(RefCell::new(None));
 
-    // Últimos resultados (DynamicImage + nome), na mesma ordem da galeria —
-    // é a partir daqui que "Salvar" e "Salvar Todas" leem os dados de fato.
     let resultados_atuais: Rc<RefCell<Vec<(DynamicImage, String)>>> =
         Rc::new(RefCell::new(Vec::new()));
 
-    // ------------------------------------------------------------------------
-    // 1. ABRIR ARQUIVO
-    // ------------------------------------------------------------------------
     let app_weak = app.as_weak();
     let imagem_entrada_abrir = imagem_entrada.clone();
     app.on_abrir_arquivo(move || {
@@ -172,8 +160,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     app.set_indice_saida_selecionada(-1);
                     app.set_imagem_e_cinza(imagem_e_cinza(&dyn_img));
 
-                    // Se o processo selecionado deixou de estar disponível
-                    // pro tipo de imagem recém-carregada, limpa a seleção.
                     let nome_atual = app.get_nome_processo();
                     let bloqueado_rgb_hsv = app.get_imagem_e_cinza()
                         && (nome_atual == "Decomposição RGB" || nome_atual == "Decomposição HSV");
@@ -202,9 +188,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    // ------------------------------------------------------------------------
-    // 2. EXECUTAR PROCESSO
-    // ------------------------------------------------------------------------
     let app_weak = app.as_weak();
     let imagem_entrada_proc = imagem_entrada.clone();
     let resultados_proc = resultados_atuais.clone();
@@ -235,7 +218,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return;
                 }
 
-                // Popula a galeria de miniaturas
                 let itens: Vec<ImagemSaida> = resultados
                     .iter()
                     .map(|(img, nome)| ImagemSaida {
@@ -245,7 +227,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .collect();
                 lista_saidas_model_proc.set_vec(itens);
 
-                // Mostra a primeira imagem como resultado principal
                 app.set_img_saida(dynimg_para_slint(&resultados[0].0));
                 app.set_indice_saida_selecionada(0);
 
@@ -274,9 +255,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    // ------------------------------------------------------------------------
-    // 3. SELECIONAR UMA SAÍDA DA GALERIA (mostra em tamanho grande)
-    // ------------------------------------------------------------------------
     let app_weak = app.as_weak();
     let resultados_selecionar = resultados_atuais.clone();
     app.on_selecionar_saida(move |indice| {
@@ -291,9 +269,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    // ------------------------------------------------------------------------
-    // 4. SALVAR SAÍDA SELECIONADA
-    // ------------------------------------------------------------------------
     let app_weak = app.as_weak();
     let resultados_salvar = resultados_atuais.clone();
     app.on_salvar_atual(move || {
@@ -338,9 +313,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    // ------------------------------------------------------------------------
-    // 5. SALVAR TODAS AS SAÍDAS (.zip)
-    // ------------------------------------------------------------------------
     let app_weak = app.as_weak();
     let resultados_zip = resultados_atuais.clone();
     app.on_salvar_todas(move || {
@@ -381,8 +353,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Compacta todos os resultados atuais num único .zip.
-/// Requer o crate `zip` no Cargo.toml (veja instruções na conversa).
 fn salvar_resultados_zip(
     resultados: &[(DynamicImage, String)],
     path: &std::path::Path,
