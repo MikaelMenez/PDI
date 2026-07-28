@@ -527,6 +527,63 @@ pub fn media_gaussiana(img: DynamicImage, sigma: f32) -> Vec<(DynamicImage, Stri
     vec
 }
 
+pub fn filtro_agucamento(img: DynamicImage, ganho: f32) -> Vec<(DynamicImage, String)> {
+    let (width, height) = img.dimensions();
+
+    let mut vec: Vec<(DynamicImage, String)> = Vec::with_capacity(1);
+    let mut saida: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(width, height);
+
+    //Nucleo de ganho ajustável
+    let nucleo = [
+        [0.0, -1.0,  0.0],
+        [-1.0, 5.0, -1.0],
+        [0.0, -1.0,  0.0]
+    ];
+
+    for y in 0..height {
+        for x in 0..width {
+            let mut soma_r = 0.0f32;
+            let mut soma_g = 0.0f32;
+            let mut soma_b = 0.0f32;
+
+            //Percorrer a vizinhança do pixel
+            for ky in 0..3 {
+                for kx in 0..3 {
+                    let px = x as i32 + (kx as i32 - 1);
+                    let py = y as i32 + (ky as i32 - 1);
+
+                    //Tratamento de bordas (espelhamento)
+                    let px_clamp = if px < 0 { -px }
+                    else if px >= width as i32 { 2 * (width as i32) - px - 2 }
+                    else { px };
+                    let py_clamp = if py < 0 { -py }
+                    else if py >= height as i32 { 2 * (height as i32) - py - 2 }
+                    else { py };
+
+                    let pixel = img.get_pixel(px_clamp as u32, py_clamp as u32);
+                    let peso = nucleo[ky][kx];
+
+                    soma_r += pixel[0] as f32 * peso;
+                    soma_g += pixel[1] as f32 * peso;
+                    soma_b += pixel[2] as f32 * peso;
+                }
+            }
+
+            let pixel = img.get_pixel(x, y);
+            let novo_r = (pixel[0] as f32 + ganho * soma_r).clamp(0.0, 255.0) as u8;
+            let novo_g = (pixel[1] as f32 + ganho * soma_g).clamp(0.0, 255.0) as u8;
+            let novo_b = (pixel[2] as f32 + ganho * soma_b).clamp(0.0, 255.0) as u8;
+
+            saida.put_pixel(x, y, Rgb([novo_r, novo_g, novo_b]));
+
+        }
+    }
+
+    vec.push((DynamicImage::ImageRgb8(saida), "Agucamento com ganho ajustavel".to_string()));
+
+    vec
+    }
+
 
 
 
