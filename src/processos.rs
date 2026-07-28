@@ -405,7 +405,7 @@ pub fn equalizacao_histograma(img: DynamicImage, ganho: f32) -> Vec<(DynamicImag
     let img_gray = img.to_luma8();
 
     let mut vec: Vec<(DynamicImage, String)> = Vec::with_capacity(1);
-    let mut saida: ImageBuffer<Luma<u8>, Vec<u8>> = ImageBuffer::new(width, height);
+    let mut saida: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(width, height);
     let mut histograma = [0u32; 256];
 
     //Preenche histograma
@@ -432,11 +432,40 @@ pub fn equalizacao_histograma(img: DynamicImage, ganho: f32) -> Vec<(DynamicImag
     //Mapeamento do histograma
     for (x, y, pixel) in img_gray.enumerate_pixels() {
         let novo_valor = mapeamento[pixel[0] as usize];
-        saida.put_pixel(x, y, Luma([novo_valor]));
+        saida.put_pixel(x, y, Rgb([novo_valor, novo_valor, novo_valor]));
     }
-    
-    vec.push((DynamicImage::ImageLuma8(saida), "Equalização de Histograma".to_string()));
+
+    vec.push((DynamicImage::ImageRgb8(saida), "Equalização de Histograma".to_string()));
 
     vec
 }
+
+pub fn fatiamento_intensidade(img: DynamicImage, fLow: u8, fHigh: u8, fundo: bool) -> Vec<(DynamicImage, String)> {
+    let (width, height) = img.dimensions();
+    let mut vec: Vec<(DynamicImage, String)> = Vec::with_capacity(1);
+    let mut saida: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(width, height);
+
+    for pixel in img.pixels() {
+        let (x, y) = (pixel.0, pixel.1);
+        let rgb = pixel.2;
+
+        // 1. Média Simples
+        let cinza = ((rgb[0] as f32 + rgb[1] as f32 + rgb[2] as f32) / 3.0) as u8;
+        let cinza_limiarizado = if cinza >= fLow && cinza <= fHigh { 255 } else { if fundo { cinza } else { 0 } };
+
+        *saida.get_pixel_mut(x, y) = Rgb([cinza_limiarizado, cinza_limiarizado, cinza_limiarizado]);
+    }
+
+    vec.push((DynamicImage::ImageRgb8(saida), "Fatiamento por intensidade".to_string()));
+
+    vec
+}
+
+
+
+
+
+
+
+
 
