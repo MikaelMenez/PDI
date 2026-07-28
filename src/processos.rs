@@ -417,14 +417,84 @@ pub fn filtro_max(img: DynamicImage, tam: u8, placeholder: u8) -> Vec<(DynamicIm
 }
 
 pub fn passa_baixa_gaussiano(img: DynamicImage, p: &crate::Parametros) -> Vec<(DynamicImage, String)> {
-    // Chama a função base passando 'false' para passa_alta
-    let processada = aplicar_filtro_gaussiano_frequencia(&img, p.freq_corte, false);
+    let processada = match &img {
+        DynamicImage::ImageRgb8(rgb_img) => {
+            // Separa os canais R, G e B, aplica o filtro em cada um e recompõe o RGB
+            let (width, height) = rgb_img.dimensions();
+            let mut r_buf = ImageBuffer::new(width, height);
+            let mut g_buf = ImageBuffer::new(width, height);
+            let mut b_buf = ImageBuffer::new(width, height);
+
+            for (x, y, pixel) in rgb_img.enumerate_pixels() {
+                r_buf.put_pixel(x, y, Luma([pixel[0]]));
+                g_buf.put_pixel(x, y, Luma([pixel[1]]));
+                b_buf.put_pixel(x, y, Luma([pixel[2]]));
+            }
+
+            let r_filtrado = aplicar_filtro_gaussiano_frequencia(&DynamicImage::ImageLuma8(r_buf), p.freq_corte, false);
+            let g_filtrado = aplicar_filtro_gaussiano_frequencia(&DynamicImage::ImageLuma8(g_buf), p.freq_corte, false);
+            let b_filtrado = aplicar_filtro_gaussiano_frequencia(&DynamicImage::ImageLuma8(b_buf), p.freq_corte, false);
+
+            let r_gray = r_filtrado.to_luma8();
+            let g_gray = g_filtrado.to_luma8();
+            let b_gray = b_filtrado.to_luma8();
+
+            let mut rgb_saida = ImageBuffer::new(width, height);
+            for (x, y, pixel) in rgb_saida.enumerate_pixels_mut() {
+                *pixel = Rgb([
+                    r_gray.get_pixel(x, y)[0],
+                    g_gray.get_pixel(x, y)[0],
+                    b_gray.get_pixel(x, y)[0],
+                ]);
+            }
+            DynamicImage::ImageRgb8(rgb_saida)
+        }
+        _ => {
+            // Se for escala de cinza, aplica direto
+            aplicar_filtro_gaussiano_frequencia(&img, p.freq_corte, false)
+        }
+    };
+
     vec![(processada, format!("Gaussiano Passa-Baixa (D0={:.1})", p.freq_corte))]
 }
 
 pub fn passa_alta_gaussiano(img: DynamicImage, p: &crate::Parametros) -> Vec<(DynamicImage, String)> {
-    // Chama a função base passando 'true' para passa_alta
-    let processada = aplicar_filtro_gaussiano_frequencia(&img, p.freq_corte, true);
+    let processada = match &img {
+        DynamicImage::ImageRgb8(rgb_img) => {
+            let (width, height) = rgb_img.dimensions();
+            let mut r_buf = ImageBuffer::new(width, height);
+            let mut g_buf = ImageBuffer::new(width, height);
+            let mut b_buf = ImageBuffer::new(width, height);
+
+            for (x, y, pixel) in rgb_img.enumerate_pixels() {
+                r_buf.put_pixel(x, y, Luma([pixel[0]]));
+                g_buf.put_pixel(x, y, Luma([pixel[1]]));
+                b_buf.put_pixel(x, y, Luma([pixel[2]]));
+            }
+
+            let r_filtrado = aplicar_filtro_gaussiano_frequencia(&DynamicImage::ImageLuma8(r_buf), p.freq_corte, true);
+            let g_filtrado = aplicar_filtro_gaussiano_frequencia(&DynamicImage::ImageLuma8(g_buf), p.freq_corte, true);
+            let b_filtrado = aplicar_filtro_gaussiano_frequencia(&DynamicImage::ImageLuma8(b_buf), p.freq_corte, true);
+
+            let r_gray = r_filtrado.to_luma8();
+            let g_gray = g_filtrado.to_luma8();
+            let b_gray = b_filtrado.to_luma8();
+
+            let mut rgb_saida = ImageBuffer::new(width, height);
+            for (x, y, pixel) in rgb_saida.enumerate_pixels_mut() {
+                *pixel = Rgb([
+                    r_gray.get_pixel(x, y)[0],
+                    g_gray.get_pixel(x, y)[0],
+                    b_gray.get_pixel(x, y)[0],
+                ]);
+            }
+            DynamicImage::ImageRgb8(rgb_saida)
+        }
+        _ => {
+            aplicar_filtro_gaussiano_frequencia(&img, p.freq_corte, true)
+        }
+    };
+
     vec![(processada, format!("Gaussiano Passa-Alta (D0={:.1})", p.freq_corte))]
 }
 
@@ -534,15 +604,84 @@ fn transpor_matriz(data: &[Complex<f32>], width: usize, height: usize) -> Vec<Co
 }
 
 pub fn passa_baixa_butterworth(img: DynamicImage, p: &crate::Parametros) -> Vec<(DynamicImage, String)> {
-    // Pegamos a frequência de corte e a ordem (se houver parâmetro de ordem configurado, usamos, senão padrão 1.0)
-    let ordem = p.param_1.max(1.0); // Ou ajuste para o campo de ordem do seu Parametros se houver
-    let processada = aplicar_filtro_butterworth_frequencia(&img, p.freq_corte, ordem, false);
+    let ordem = p.ordem.max(1) as f32;
+    let processada = match &img {
+        DynamicImage::ImageRgb8(rgb_img) => {
+            let (width, height) = rgb_img.dimensions();
+            let mut r_buf = ImageBuffer::new(width, height);
+            let mut g_buf = ImageBuffer::new(width, height);
+            let mut b_buf = ImageBuffer::new(width, height);
+
+            for (x, y, pixel) in rgb_img.enumerate_pixels() {
+                r_buf.put_pixel(x, y, Luma([pixel[0]]));
+                g_buf.put_pixel(x, y, Luma([pixel[1]]));
+                b_buf.put_pixel(x, y, Luma([pixel[2]]));
+            }
+
+            let r_filtrado = aplicar_filtro_butterworth_frequencia(&DynamicImage::ImageLuma8(r_buf), p.freq_corte, ordem, false);
+            let g_filtrado = aplicar_filtro_butterworth_frequencia(&DynamicImage::ImageLuma8(g_buf), p.freq_corte, ordem, false);
+            let b_filtrado = aplicar_filtro_butterworth_frequencia(&DynamicImage::ImageLuma8(b_buf), p.freq_corte, ordem, false);
+
+            let r_gray = r_filtrado.to_luma8();
+            let g_gray = g_filtrado.to_luma8();
+            let b_gray = b_filtrado.to_luma8();
+
+            let mut rgb_saida = ImageBuffer::new(width, height);
+            for (x, y, pixel) in rgb_saida.enumerate_pixels_mut() {
+                *pixel = Rgb([
+                    r_gray.get_pixel(x, y)[0],
+                    g_gray.get_pixel(x, y)[0],
+                    b_gray.get_pixel(x, y)[0],
+                ]);
+            }
+            DynamicImage::ImageRgb8(rgb_saida)
+        }
+        _ => {
+            aplicar_filtro_butterworth_frequencia(&img, p.freq_corte, ordem, false)
+        }
+    };
+
     vec![(processada, format!("Butterworth Passa-Baixa (D0={:.1}, n={:.0})", p.freq_corte, ordem))]
 }
 
 pub fn passa_alta_butterworth(img: DynamicImage, p: &crate::Parametros) -> Vec<(DynamicImage, String)> {
-    let ordem = p.param_1.max(1.0);
-    let processada = aplicar_filtro_butterworth_frequencia(&img, p.freq_corte, ordem, true);
+    let ordem = p.ordem.max(1) as f32;
+    let processada = match &img {
+        DynamicImage::ImageRgb8(rgb_img) => {
+            let (width, height) = rgb_img.dimensions();
+            let mut r_buf = ImageBuffer::new(width, height);
+            let mut g_buf = ImageBuffer::new(width, height);
+            let mut b_buf = ImageBuffer::new(width, height);
+
+            for (x, y, pixel) in rgb_img.enumerate_pixels() {
+                r_buf.put_pixel(x, y, Luma([pixel[0]]));
+                g_buf.put_pixel(x, y, Luma([pixel[1]]));
+                b_buf.put_pixel(x, y, Luma([pixel[2]]));
+            }
+
+            let r_filtrado = aplicar_filtro_butterworth_frequencia(&DynamicImage::ImageLuma8(r_buf), p.freq_corte, ordem, true);
+            let g_filtrado = aplicar_filtro_butterworth_frequencia(&DynamicImage::ImageLuma8(g_buf), p.freq_corte, ordem, true);
+            let b_filtrado = aplicar_filtro_butterworth_frequencia(&DynamicImage::ImageLuma8(b_buf), p.freq_corte, ordem, true);
+
+            let r_gray = r_filtrado.to_luma8();
+            let g_gray = g_filtrado.to_luma8();
+            let b_gray = b_filtrado.to_luma8();
+
+            let mut rgb_saida = ImageBuffer::new(width, height);
+            for (x, y, pixel) in rgb_saida.enumerate_pixels_mut() {
+                *pixel = Rgb([
+                    r_gray.get_pixel(x, y)[0],
+                    g_gray.get_pixel(x, y)[0],
+                    b_gray.get_pixel(x, y)[0],
+                ]);
+            }
+            DynamicImage::ImageRgb8(rgb_saida)
+        }
+        _ => {
+            aplicar_filtro_butterworth_frequencia(&img, p.freq_corte, ordem, true)
+        }
+    };
+
     vec![(processada, format!("Butterworth Passa-Alta (D0={:.1}, n={:.0})", p.freq_corte, ordem))]
 }
 
@@ -623,13 +762,97 @@ fn aplicar_filtro_butterworth_frequencia(img: &DynamicImage, freq_corte: f32, or
     DynamicImage::ImageLuma8(out_img)
 }
 
-/// 1. Filtro Adaptativo de Mediana
+/// 1. Filtro Adaptativo de Mediana (Suporta RGB e tamanho máximo de janela via p.kernel)
 pub fn filtro_adaptativo_mediana(img: DynamicImage, p: &crate::Parametros) -> Vec<(DynamicImage, String)> {
-    let gray = img.to_luma8();
+    let max_kernel = p.kernel.max(3) as i32;
+
+    let processada = match &img {
+        DynamicImage::ImageRgb8(rgb_img) => {
+            let (width, height) = rgb_img.dimensions();
+            let mut r_buf = ImageBuffer::new(width, height);
+            let mut g_buf = ImageBuffer::new(width, height);
+            let mut b_buf = ImageBuffer::new(width, height);
+
+            for (x, y, pixel) in rgb_img.enumerate_pixels() {
+                r_buf.put_pixel(x, y, Luma([pixel[0]]));
+                g_buf.put_pixel(x, y, Luma([pixel[1]]));
+                b_buf.put_pixel(x, y, Luma([pixel[2]]));
+            }
+
+            let r_filtrado = aplicar_adaptativo_mediana_canal(&r_buf, max_kernel);
+            let g_filtrado = aplicar_adaptativo_mediana_canal(&g_buf, max_kernel);
+            let b_filtrado = aplicar_adaptativo_mediana_canal(&b_buf, max_kernel);
+
+            let mut rgb_saida = ImageBuffer::new(width, height);
+            for (x, y, pixel) in rgb_saida.enumerate_pixels_mut() {
+                *pixel = Rgb([
+                    r_filtrado.get_pixel(x, y)[0],
+                    g_filtrado.get_pixel(x, y)[0],
+                    b_filtrado.get_pixel(x, y)[0],
+                ]);
+            }
+            DynamicImage::ImageRgb8(rgb_saida)
+        }
+        _ => {
+            let gray = img.to_luma8();
+            DynamicImage::ImageLuma8(aplicar_adaptativo_mediana_canal(&gray, max_kernel))
+        }
+    };
+
+    vec![(processada, format!("Filtro Adaptativo Mediana (Max S={})", max_kernel))]
+}
+
+/// 2. Ruído Aditivo Gaussiano (Suporta RGB)
+pub fn ruido_aditivo_gaussiano(img: DynamicImage, p: &crate::Parametros) -> Vec<(DynamicImage, String)> {
+    let mut rng = rand::thread_rng();
+    let desvio_padrao = (p.param_1 * 5.0).max(1.0) as f64;
+
+    let processada = match &img {
+        DynamicImage::ImageRgb8(rgb_img) => {
+            let (width, height) = rgb_img.dimensions();
+            let mut saida = ImageBuffer::new(width, height);
+
+            for (x, y, pixel) in rgb_img.enumerate_pixels() {
+                let mut novo_pixel = [0u8; 3];
+                for i in 0..3 {
+                    let val_canal = pixel[i] as f64;
+                    let r1: f64 = rng.gen_range(0.0..1.0);
+                    let r2: f64 = rng.gen_range(0.0..1.0);
+                    let r3: f64 = rng.gen_range(0.0..1.0);
+                    let normal_approx = (r1 + r2 + r3 - 1.5) * 2.0 * desvio_padrao;
+                    novo_pixel[i] = (val_canal + normal_approx).clamp(0.0, 255.0) as u8;
+                }
+                saida.put_pixel(x, y, Rgb(novo_pixel));
+            }
+            DynamicImage::ImageRgb8(saida)
+        }
+        _ => {
+            let gray = img.to_luma8();
+            let (width, height) = gray.dimensions();
+            let mut saida = ImageBuffer::new(width, height);
+
+            for y in 0..height {
+                for x in 0..width {
+                    let pixel = gray.get_pixel(x, y)[0] as f64;
+                    let r1: f64 = rng.gen_range(0.0..1.0);
+                    let r2: f64 = rng.gen_range(0.0..1.0);
+                    let r3: f64 = rng.gen_range(0.0..1.0);
+                    let normal_approx = (r1 + r2 + r3 - 1.5) * 2.0 * desvio_padrao;
+                    let val = (pixel + normal_approx).clamp(0.0, 255.0) as u8;
+                    saida.put_pixel(x, y, Luma([val]));
+                }
+            }
+            DynamicImage::ImageLuma8(saida)
+        }
+    };
+
+    vec![(processada, format!("Ruído Aditivo Gaussiano (Desvio={:.1})", desvio_padrao))]
+}
+
+/// Helper interno para aplicar o algoritmo do Filtro Adaptativo de Mediana em um único canal (Luma8)
+fn aplicar_adaptativo_mediana_canal(gray: &image::GrayImage, max_kernel: i32) -> image::GrayImage {
     let (width, height) = gray.dimensions();
     let mut saida = image::ImageBuffer::new(width, height);
-    
-    let max_kernel = p.kernel.max(3) as i32;
 
     for y in 0..height {
         for x in 0..width {
@@ -678,30 +901,63 @@ pub fn filtro_adaptativo_mediana(img: DynamicImage, p: &crate::Parametros) -> Ve
             saida.put_pixel(x, y, Luma([val_final]));
         }
     }
-
-    vec![(DynamicImage::ImageLuma8(saida), format!("Filtro Adaptativo Mediana (Max S={})", max_kernel))]
+    saida
 }
 
-/// 2. Ruído Aditivo Gaussiano
-pub fn ruido_aditivo_gaussiano(img: DynamicImage, p: &crate::Parametros) -> Vec<(DynamicImage, String)> {
-    let gray = img.to_luma8();
-    let (width, height) = gray.dimensions();
-    let mut saida = image::ImageBuffer::new(width, height);
+/// Aplicação de ruído Sal, Pimenta, Sal e Pimenta com suporte a RGB e ajuste de distribuição
+pub fn ruido_sal_pimenta(img: DynamicImage, p: &crate::Parametros) -> Vec<(DynamicImage, String)> {
     let mut rng = rand::thread_rng();
 
-    let desvio_padrao = (p.param_1 * 5.0).max(1.0) as f64; // Multiplica o slider para ter mais alcance
+    // Intensidade do ruído (ex: p.intensidade_ruido de 0.0 a 1.0 ou 0 a 100 mapeado para probabilidade)
+    // Se p.intensidade_ruido for de 0 a 100, dividimos por 100. Se for 0.0 a 1.0, usamos direto.
+    let probabilidade_total = (p.intensidade_ruido / 100.0).clamp(0.0, 1.0);
+    
+    // Distribuição: controla a proporção de "Sal" (branco) em relação a "Pimenta" (preto).
+    // Ex: p.distribuicao_ruido de 0.0 a 1.0 (0.5 = 50% sal e 50% pimenta).
+    let proporcao_sal = p.distribuicao_ruido.clamp(0.0, 1.0);
 
-    for y in 0..height {
-        for x in 0..width {
-            let pixel = gray.get_pixel(x, y)[0] as f64;
-            let r1: f64 = rng.gen_range(0.0..1.0);
-            let r2: f64 = rng.gen_range(0.0..1.0);
-            let r3: f64 = rng.gen_range(0.0..1.0);
-            let normal_approx = (r1 + r2 + r3 - 1.5) * 2.0 * desvio_padrao;
-            let val = (pixel + normal_approx).clamp(0.0, 255.0) as u8;
-            saida.put_pixel(x, y, Luma([val]));
+    let processada = match &img {
+        DynamicImage::ImageRgb8(rgb_img) => {
+            let (width, height) = rgb_img.dimensions();
+            let mut saida = ImageBuffer::new(width, height);
+
+            for (x, y, pixel) in rgb_img.enumerate_pixels() {
+                let r1: f32 = rng.gen_range(0.0..1.0);
+                if r1 < probabilidade_total {
+                    // Sorteia se vai ser Sal (255) ou Pimenta (0) baseado na distribuição
+                    let r2: f32 = rng.gen_range(0.0..1.0);
+                    let val = if r2 < proporcao_sal { 255u8 } else { 0u8 };
+                    saida.put_pixel(x, y, Rgb([val, val, val])); // No sal/pimenta puro, o pixel costuma afetar os canais juntos ou independentes
+                } else {
+                    saida.put_pixel(x, y, *pixel);
+                }
+            }
+            DynamicImage::ImageRgb8(saida)
         }
-    }
+        _ => {
+            let gray = img.to_luma8();
+            let (width, height) = gray.dimensions();
+            let mut saida = ImageBuffer::new(width, height);
 
-    vec![(DynamicImage::ImageLuma8(saida), format!("Ruído Aditivo Gaussiano (Desvio={:.1})", desvio_padrao))]
+            for (x, y, pixel) in gray.enumerate_pixels() {
+                let r1: f32 = rng.gen_range(0.0..1.0);
+                if r1 < probabilidade_total {
+                    let r2: f32 = rng.gen_range(0.0..1.0);
+                    let val = if r2 < proporcao_sal { 255u8 } else { 0u8 };
+                    saida.put_pixel(x, y, Luma([val]));
+                } else {
+                    saida.put_pixel(x, y, *pixel);
+                }
+            }
+            DynamicImage::ImageLuma8(saida)
+        }
+    };
+
+    vec![(
+        processada,
+        format!(
+            "Ruído Sal/Pimenta (Prob={:.2}, Dist.Sal={:.2})",
+            probabilidade_total, proporcao_sal
+        ),
+    )]
 }

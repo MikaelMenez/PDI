@@ -130,7 +130,7 @@ fn executar_processo(
         "Passa-Alta Butterworth" => Some(processos::passa_alta_butterworth(img, p)),
         "Filtro Adaptativo de Mediana" => Some(processos::filtro_adaptativo_mediana(img, p)),
         "Ruído Aditivo Gaussiano" => Some(processos::ruido_aditivo_gaussiano(img, p)),
-        // "Ruído Sal, Pimenta, Sal e Pimenta" => Some(processos::ruido_sal_pimenta(img, p)),
+        "Ruído Sal, Pimenta, Sal e Pimenta" => Some(processos::ruido_sal_pimenta(img, p)),
         _ => None,
     }
 }
